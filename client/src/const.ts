@@ -13,7 +13,7 @@ export { COOKIE_NAME, ONE_YEAR_MS } from "@shared/const";
 // with "invalid oauth state". It returns void by design, so there is no URL to
 // stash across renders.
 export const startLogin = () => {
-  const oauthPortalUrl = import.meta.env.VITE_OAUTH_PORTAL_URL || "https://auth.manus.im";
+  const oauthPortalUrl = (import.meta.env.VITE_OAUTH_PORTAL_URL || "https://auth.manus.im").replace(/\/$/, "");
   const appId = import.meta.env.VITE_APP_ID || "elites-fight";
   const redirectUri = `${window.location.origin}/api/oauth/callback`;
 
