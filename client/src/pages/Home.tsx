@@ -62,7 +62,13 @@ export default function Home() {
             <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
               <Button
                 size="lg"
-                onClick={() => user ? scrollTo("planos") : startLogin()}
+                onClick={() => {
+                  if (user) {
+                    window.location.href = "/dashboard";
+                  } else {
+                    scrollTo("planos");
+                  }
+                }}
                 className="bg-gold-gradient text-black font-semibold text-base px-8 h-12 hover:opacity-90 transition-opacity"
               >
                 <Crown className="w-5 h-5 mr-2" />
@@ -284,7 +290,13 @@ export default function Home() {
                         : "variant-outline border-border/50"
                     }`}
                     variant={plan.code === "free" ? "outline" : "default"}
-                    onClick={() => user ? scrollTo("recursos") : startLogin()}
+                    onClick={() => {
+                      if (plan.code === "free") {
+                        window.location.href = "/dashboard";
+                      } else {
+                        window.location.href = `/admin?plan=${plan.code}`;
+                      }
+                    }}
                   >
                     {plan.code === "free" ? "Começar grátis" : `Assinar ${plan.name}`}
                   </Button>
