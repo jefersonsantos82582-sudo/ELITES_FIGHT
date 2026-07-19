@@ -19,6 +19,7 @@ const benefitIcons: Record<string, typeof FileSpreadsheet> = {
 
 export default function Home() {
   const { user } = useAuth();
+  const createUpgradePreference = trpc.payment.createUpgradePreference.useMutation();
   const { data: plans } = trpc.plans.list.useQuery();
   const { data: featuredTemplates } = trpc.templates.featured.useQuery();
 
@@ -66,7 +67,7 @@ export default function Home() {
                   if (user) {
                     window.location.href = "/dashboard";
                   } else {
-                    scrollTo("planos");
+                    startLogin();
                   }
                 }}
                 className="bg-gold-gradient text-black font-semibold text-base px-8 h-12 hover:opacity-90 transition-opacity"
@@ -290,11 +291,30 @@ export default function Home() {
                         : "variant-outline border-border/50"
                     }`}
                     variant={plan.code === "free" ? "outline" : "default"}
-                    onClick={() => {
+                    onClick={async () => {
+                      if (!user) {
+                        // Se o usuário não estiver logado, iniciar o fluxo de login
+                        startLogin();
+                        return;
+                      }
+
                       if (plan.code === "free") {
                         window.location.href = "/dashboard";
                       } else {
-                        window.location.href = `/admin?plan=${plan.code}`;
+                        try {
+                          const successUrl = `${window.location.origin}/dashboard?payment=success`;
+                          const failureUrl = `${window.location.origin}/dashboard?payment=failure`;
+                          const preference = await createUpgradePreference.mutateAsync({
+                            planCode: plan.code as 'pro' | 'elite',
+                            successUrl,
+                            failureUrl,
+                          });
+                          // Redirecionar para o Mercado Pago
+                          window.location.href = preference.initPoint;
+                        } catch (error) {
+                          console.error("Erro ao iniciar checkout do Mercado Pago:", error);
+                          alert("Não foi possível iniciar o pagamento. Tente novamente mais tarde.");
+                        }
                       }
                     }}
                   >

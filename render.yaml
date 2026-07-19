@@ -3,7 +3,7 @@ services:
     name: elites-fight
     env: node
     plan: free
-    buildCommand: npm install --legacy-peer-deps && npm run build && (npx drizzle-kit push || true)
+    buildCommand: npm install --legacy-peer-deps && npm run build
     startCommand: npm start
     envVars:
       - key: NODE_ENV

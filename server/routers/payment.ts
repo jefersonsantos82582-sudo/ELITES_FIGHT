@@ -56,7 +56,7 @@ export const paymentRouter = router({
 
         return {
           preferenceId: preference.id,
-          initPoint: preference.init_point,
+          initPoint: preference.init_point || preference.sandbox_init_point,
           sandboxInitPoint: preference.sandbox_init_point,
         };
       } catch (error) {

@@ -10,6 +10,8 @@ import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { trpc } from "@/lib/trpc";
 import { useAuth } from "@/_core/hooks/useAuth";
+import { useLocation } from "wouter";
+import { useEffect, useState } from "react";
 
 const menuItems = [
   { icon: LayoutDashboard, label: "Dashboard", path: "/dashboard" },
@@ -22,6 +24,17 @@ export default function Dashboard() {
   const { user } = useAuth();
   const { data: overview, isLoading } = trpc.dashboard.overview.useQuery();
   const [location] = useLocation();
+  const [paymentStatus, setPaymentStatus] = useState<'success' | 'failure' | null>(null);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const payment = params.get('payment');
+    if (payment === 'success' || payment === 'failure') {
+      setPaymentStatus(payment as 'success' | 'failure');
+      // Limpar o parâmetro da URL
+      window.history.replaceState({}, document.title, '/dashboard');
+    }
+  }, []);
 
   if (isLoading) {
     return (
@@ -44,6 +57,17 @@ export default function Dashboard() {
   return (
     <DashboardLayout>
       <div className="space-y-6">
+        {/* Payment Status Alert */}
+        {paymentStatus === 'success' && (
+          <div className="p-4 bg-green-500/10 border border-green-500/30 rounded-lg">
+            <p className="text-green-700 dark:text-green-400 font-semibold">✓ Pagamento realizado com sucesso! Seu plano foi atualizado.</p>
+          </div>
+        )}
+        {paymentStatus === 'failure' && (
+          <div className="p-4 bg-red-500/10 border border-red-500/30 rounded-lg">
+            <p className="text-red-700 dark:text-red-400 font-semibold">✗ Falha no pagamento. Por favor, tente novamente.</p>
+          </div>
+        )}
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
