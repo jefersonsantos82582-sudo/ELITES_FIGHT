@@ -11,6 +11,6 @@ services:
       - key: DATABASE_URL
         sync: false
       - key: MERCADO_PAGO_ACCESS_TOKEN
-        sync: false
+        value: APP_USR-3099883387466407-071810-702728ea8137984ae015dac8a2223668-472145272
       - key: ADMIN_PASSWORD
-        sync: false
+        value: A2m8o9j3
