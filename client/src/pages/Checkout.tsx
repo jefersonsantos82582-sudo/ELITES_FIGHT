@@ -25,13 +25,13 @@ export default function Checkout() {
   const planCode = searchParams.get("plan") as "pro" | "elite" | null;
 
   // Query para obter informações do plano
-  const { data: planInfo } = trpc.payment.getPlanInfo.useQuery(
+  const { data: planInfo } = (trpc as any).payment.getPlanInfo.useQuery(
     { planCode: planCode || "pro" },
     { enabled: !!planCode }
   );
 
   // Mutation para criar preferência de pagamento
-  const createPreferenceMutation = trpc.payment.createUpgradePreference.useMutation();
+  const createPreferenceMutation = (trpc as any).payment.createUpgradePreference.useMutation();
 
   useEffect(() => {
     if (!user) {

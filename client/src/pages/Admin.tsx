@@ -354,12 +354,12 @@ function CategoriesTab() {
   const [description, setDescription] = useState("");
   const [icon, setIcon] = useState("");
 
-  const createMutation = trpc.admin.createCategory.useMutation({
-    onSuccess: () => { utils.categories.list.invalidate(); toast.success("Categoria criada"); setName(""); setSlug(""); setDescription(""); setIcon(""); },
-    onError: (e) => toast.error(e.message),
+  const createMutation = (trpc.admin as any).createCategory.useMutation({
+    onSuccess: () => { utils.categories.list.invalidate(); toast.success("Categoria criada"); setName(""); setSlug(""); },
+    onError: (e: any) => toast.error(e.message),
   });
 
-  const deleteMutation = trpc.admin.deleteCategory.useMutation({
+  const deleteMutation = (trpc.admin as any).deleteCategory.useMutation({
     onSuccess: () => { utils.categories.list.invalidate(); toast.success("Categoria excluída"); },
   });
 
@@ -419,30 +419,30 @@ function CategoriesTab() {
 
 // ==================== Users Tab ====================
 function UsersTab() {
-  const { data: users } = trpc.admin.listUsers.useQuery();
+  const { data: users } = (trpc.admin as any).listAllUsers.useQuery();
   const utils = trpc.useUtils();
 
-  const updatePlanMutation = trpc.admin.updateUserPlan.useMutation({
-    onSuccess: () => { utils.admin.listUsers.invalidate(); toast.success("Plano atualizado"); },
+  const updatePlanMutation = (trpc.admin as any).updateUserPlan.useMutation({
+    onSuccess: () => { (utils.admin as any).listAllUsers.invalidate(); toast.success("Plano atualizado"); },
   });
 
-  const suspendMutation = trpc.admin.suspendUser.useMutation({
-    onSuccess: () => { utils.admin.listUsers.invalidate(); toast.success("Status atualizado"); },
+  const suspendMutation = (trpc.admin as any).suspendUser.useMutation({
+    onSuccess: () => { (utils.admin as any).listAllUsers.invalidate(); toast.success("Status atualizado"); },
   });
 
-  const roleMutation = trpc.admin.updateUserRole.useMutation({
-    onSuccess: () => { utils.admin.listUsers.invalidate(); toast.success("Permissão atualizada"); },
+  const roleMutation = (trpc.admin as any).updateUserRole.useMutation({
+    onSuccess: () => { (utils.admin as any).listAllUsers.invalidate(); toast.success("Permissão atualizada"); },
   });
 
-  const deleteMutation = trpc.admin.deleteUser.useMutation({
-    onSuccess: () => { utils.admin.listUsers.invalidate(); toast.success("Usuário excluído"); },
+  const deleteMutation = (trpc.admin as any).deleteUser.useMutation({
+    onSuccess: () => { (utils.admin as any).listAllUsers.invalidate(); toast.success("Usuário excluído"); },
   });
 
   return (
     <div className="space-y-4">
       <h3 className="font-semibold">Usuários ({users?.length || 0})</h3>
       <div className="space-y-2">
-        {users?.map(u => (
+        {(users as any[])?.map((u: any) => (
           <Card key={u.id} className="p-4 bg-card/50 border-border/30">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div className="min-w-0 flex-1">

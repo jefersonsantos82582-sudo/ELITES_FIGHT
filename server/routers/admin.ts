@@ -77,7 +77,7 @@ export const adminRouter = router({
         categoryId: input.categoryId,
         name: input.name,
         slug: input.slug,
-        description: input.description || null,
+        description: input.description || undefined,
         plan: input.plan,
         columns: input.columns,
         headerColor: input.headerColor || "#D4AF37",
@@ -187,6 +187,6 @@ export const adminRouter = router({
       })
     )
     .mutation(async ({ input }) => {
-      return db.updateSetting(input.key, input.value);
+      return db.upsertSetting(input.key, input.value);
     }),
 });

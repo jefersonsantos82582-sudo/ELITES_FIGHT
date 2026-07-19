@@ -272,6 +272,12 @@ export async function getGeneratedSheetById(id: number) {
   return result[0];
 }
 
+export async function getAllGeneratedSheets() {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(generatedSheets).orderBy(desc(generatedSheets.createdAt));
+}
+
 // ==================== Plans ====================
 
 export async function getAllPlans(): Promise<Plan[]> {
