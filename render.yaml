@@ -9,8 +9,8 @@ services:
       - key: NODE_ENV
         value: production
       - key: DATABASE_URL
-        value: postgresql://elites_fight_user:70RZTnOuDB685JVomjJ3oTJrwrbkjspm@dpg-d9e33cbbc2fs73f52vsg-a/elites_fight
+        sync: false
       - key: MERCADO_PAGO_ACCESS_TOKEN
-        value: APP_USR-3099883387466407-071810-702728ea8137984ae015dac8a2223668-472145272
+        sync: false
       - key: ADMIN_PASSWORD
-        value: A2m8o9j3
+        sync: false
