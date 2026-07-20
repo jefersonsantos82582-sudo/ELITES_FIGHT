@@ -10,7 +10,6 @@ import { Badge } from "@/components/ui/badge";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import { useAuth } from "@/_core/hooks/useAuth";
-import { startLogin } from "@/const";
 import { trpc } from "@/lib/trpc";
 
 const benefitIcons: Record<string, typeof FileSpreadsheet> = {
@@ -18,7 +17,7 @@ const benefitIcons: Record<string, typeof FileSpreadsheet> = {
 };
 
 export default function Home() {
-  const { user } = useAuth();
+  const { user, login } = useAuth();
   const createUpgradePreference = trpc.payment.createUpgradePreference.useMutation();
   const { data: plans } = trpc.plans.list.useQuery();
   const { data: featuredTemplates } = trpc.templates.featured.useQuery();
@@ -67,7 +66,7 @@ export default function Home() {
                   if (user) {
                     window.location.href = "/dashboard";
                   } else {
-                    startLogin();
+                    login();
                   }
                 }}
                 className="bg-gold-gradient text-black font-semibold text-base px-8 h-12 hover:opacity-90 transition-opacity"
@@ -293,8 +292,7 @@ export default function Home() {
                     variant={plan.code === "free" ? "outline" : "default"}
                     onClick={async () => {
                       if (!user) {
-                        // Se o usuário não estiver logado, iniciar o fluxo de login
-                        startLogin();
+                        login();
                         return;
                       }
 
@@ -304,51 +302,19 @@ export default function Home() {
                         try {
                           const successUrl = `${window.location.origin}/dashboard?payment=success`;
                           const failureUrl = `${window.location.origin}/dashboard?payment=failure`;
-                          const preference = await createUpgradePreference.mutateAsync({
-                            planCode: plan.code as 'pro' | 'elite',
-                            successUrl,
-                            failureUrl,
-                          });
-                          // Redirecionar para o Mercado Pago
-                          window.location.href = preference.initPoint;
-                        } catch (error) {
-                          console.error("Erro ao iniciar checkout do Mercado Pago:", error);
-                          alert("Não foi possível iniciar o pagamento. Tente novamente mais tarde.");
+                          window.location.href = `/checkout?plan=${plan.code}`;
+                        } catch (err) {
+                          console.error("Erro ao criar preferência de pagamento:", err);
                         }
                       }
                     }}
                   >
-                    {plan.code === "free" ? "Começar grátis" : `Assinar ${plan.name}`}
+                    {plan.code === "free" ? "Começar agora" : "Fazer upgrade"}
                   </Button>
                 </Card>
               );
             })}
           </div>
-        </div>
-      </section>
-
-      {/* ==================== CTA FINAL ==================== */}
-      <section className="py-20 md:py-28 border-t border-border/30">
-        <div className="container">
-          <Card className="relative p-12 md:p-16 bg-card border-primary/20 overflow-hidden text-center">
-            <div className="absolute inset-0 bg-gradient-to-br from-primary/5 to-transparent pointer-events-none" />
-            <div className="relative">
-              <h2 className="font-display text-3xl md:text-5xl font-bold mb-4">
-                Pronto para <span className="text-gold-gradient">começar?</span>
-              </h2>
-              <p className="text-muted-foreground text-lg max-w-xl mx-auto mb-8">
-                Crie sua primeira planilha profissional gratuitamente. Sem cartão de crédito.
-              </p>
-              <Button
-                size="lg"
-                onClick={() => user ? scrollTo("planos") : startLogin()}
-                className="bg-gold-gradient text-black font-semibold text-base px-8 h-12 hover:opacity-90"
-              >
-                <Crown className="w-5 h-5 mr-2" />
-                Criar gratuitamente
-              </Button>
-            </div>
-          </Card>
         </div>
       </section>
 

@@ -19,9 +19,8 @@ import {
   SidebarTrigger,
   useSidebar,
 } from "@/components/ui/sidebar";
-import { startLogin } from "@/const";
 import { useIsMobile } from "@/hooks/useMobile";
-import { LayoutDashboard, LogOut, PanelLeft, Users } from "lucide-react";
+import { LayoutDashboard, LogOut, PanelLeft, Library, FileSpreadsheet, Settings } from "lucide-react";
 import { CSSProperties, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
 import { DashboardLayoutSkeleton } from './DashboardLayoutSkeleton';
@@ -29,9 +28,9 @@ import { Button } from "./ui/button";
 
 const menuItems = [
   { icon: LayoutDashboard, label: "Dashboard", path: "/dashboard" },
-  { icon: Users, label: "Modelos", path: "/dashboard/modelos" },
-  { icon: LayoutDashboard, label: "Gerador", path: "/dashboard/gerador" },
-  { icon: Users, label: "Configurações", path: "/dashboard/config" },
+  { icon: Library, label: "Modelos", path: "/dashboard/modelos" },
+  { icon: FileSpreadsheet, label: "Gerador", path: "/dashboard/gerador" },
+  { icon: Settings, label: "Configurações", path: "/dashboard/config" },
 ];
 
 const SIDEBAR_WIDTH_KEY = "sidebar-width";
@@ -48,7 +47,7 @@ export default function DashboardLayout({
     const saved = localStorage.getItem(SIDEBAR_WIDTH_KEY);
     return saved ? parseInt(saved, 10) : DEFAULT_WIDTH;
   });
-  const { loading, user } = useAuth();
+  const { loading, user, login } = useAuth();
 
   useEffect(() => {
     localStorage.setItem(SIDEBAR_WIDTH_KEY, sidebarWidth.toString());
@@ -71,7 +70,7 @@ export default function DashboardLayout({
               </p>
           </div>
           <Button
-            onClick={() => startLogin()}
+            onClick={() => login()}
             size="lg"
             className="w-full shadow-lg hover:shadow-xl transition-all"
           >
@@ -198,6 +197,19 @@ function DashboardLayoutContent({
                   </SidebarMenuItem>
                 );
               })}
+              {user?.role === "admin" && (
+                <SidebarMenuItem>
+                  <SidebarMenuButton
+                    isActive={location === "/admin"}
+                    onClick={() => setLocation("/admin")}
+                    tooltip="Admin"
+                    className={`h-10 transition-all font-normal`}
+                  >
+                    <Settings className={`h-4 w-4 ${location === "/admin" ? "text-primary" : ""}`} />
+                    <span>Admin</span>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              )}
             </SidebarMenu>
           </SidebarContent>
 

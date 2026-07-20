@@ -3,13 +3,12 @@ import { Link, useLocation } from "wouter";
 import { Menu, X, Crown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/_core/hooks/useAuth";
-import { startLogin } from "@/const";
 
 export default function Navbar() {
   const [scrolled, setScrolled] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [location] = useLocation();
-  const { user, logout } = useAuth();
+  const { user, login, logout } = useAuth();
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 20);
@@ -78,12 +77,12 @@ export default function Navbar() {
               </>
             ) : (
               <>
-                <Button variant="ghost" size="sm" onClick={() => startLogin()}>
+                <Button variant="ghost" size="sm" onClick={() => login()}>
                   Entrar
                 </Button>
                 <Button
                   size="sm"
-                  onClick={() => startLogin()}
+                  onClick={() => login()}
                   className="bg-gold-gradient text-black font-semibold hover:opacity-90"
                 >
                   Criar gratuitamente
@@ -134,12 +133,12 @@ export default function Navbar() {
                   </>
                 ) : (
                   <>
-                    <Button variant="outline" onClick={() => { startLogin(); setMobileOpen(false); }}>
+                    <Button variant="outline" onClick={() => { login(); setMobileOpen(false); }}>
                       Entrar
                     </Button>
                     <Button
                       className="bg-gold-gradient text-black font-semibold"
-                      onClick={() => { startLogin(); setMobileOpen(false); }}
+                      onClick={() => { login(); setMobileOpen(false); }}
                     >
                       Criar gratuitamente
                     </Button>

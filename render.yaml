@@ -14,3 +14,5 @@ services:
         value: APP_USR-3099883387466407-071810-702728ea8137984ae015dac8a2223668-472145272
       - key: ADMIN_PASSWORD
         value: A2m8o9j3
+      # Firebase Admin no servidor usa o projectId 'elites-fight' configurado no código.
+      # Certifique-se de que o ambiente do Render tenha acesso à internet para validar tokens.

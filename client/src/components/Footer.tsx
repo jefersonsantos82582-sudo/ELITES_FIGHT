@@ -1,12 +1,11 @@
-import { Crown, Github, Twitter, Instagram } from "lucide-react";
-import { Link } from "wouter";
+import { Crown } from "lucide-react";
 
 export default function Footer() {
   const links = [
-  { label: "Início", href: "/" },
-  { label: "Recursos", href: "/#recursos" },
-  { label: "Planos", href: "/#planos" },
-  { label: "Dashboard", href: "/dashboard" },
+    { label: "Início", href: "/" },
+    { label: "Recursos", href: "/#recursos" },
+    { label: "Planos", href: "/#planos" },
+    { label: "Dashboard", href: "/dashboard" },
   ];
 
   return (
@@ -28,17 +27,6 @@ export default function Footer() {
               Crie, personalize e baixe planilhas editáveis compatíveis com
               Excel e Google Planilhas em segundos.
             </p>
-            <div className="flex items-center gap-4 mt-6">
-              <a href="/#planos" className="text-muted-foreground hover:text-primary transition-colors" aria-label="Planos">
-                <Github className="w-5 h-5" />
-              </a>
-              <a href="/#recursos" className="text-muted-foreground hover:text-primary transition-colors" aria-label="Recursos">
-                <Twitter className="w-5 h-5" />
-              </a>
-              <a href="/dashboard" className="text-muted-foreground hover:text-primary transition-colors" aria-label="Dashboard">
-                <Instagram className="w-5 h-5" />
-              </a>
-            </div>
           </div>
 
           {/* Links */}

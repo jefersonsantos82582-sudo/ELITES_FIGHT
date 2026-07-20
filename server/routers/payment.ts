@@ -76,17 +76,9 @@ export const paymentRouter = router({
       }
 
       try {
+        // O Mercado Pago envia o body do webhook
         const processed = await mercadoPagoService.processWebhookNotification(input);
-
-        if (processed) {
-          // Aqui você pode processar o pagamento e atualizar o plano do usuário
-          // Exemplo:
-          // const userId = extrairUserIdDaNotificacao(input);
-          // const planCode = extrairPlanCodeDaNotificacao(input);
-          // await db.updateUserPlan(userId, planCode);
-        }
-
-        return { success: true };
+        return { success: processed };
       } catch (error) {
         console.error("Erro ao processar webhook de pagamento:", error);
         return { success: false, message: "Erro ao processar webhook" };

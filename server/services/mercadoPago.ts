@@ -3,6 +3,7 @@
  */
 
 import axios from 'axios';
+import * as db from '../db';
 
 interface MercadoPagoConfig {
   accessToken: string;
@@ -27,6 +28,7 @@ interface CreatePreferencePayload {
   };
   auto_return?: 'approved' | 'all';
   external_reference?: string;
+  notification_url?: string;
 }
 
 interface MercadoPagoPreference {
@@ -100,18 +102,22 @@ class MercadoPagoService {
       },
       auto_return: 'approved',
       external_reference: `user_${userId}_plan_${planCode}_${Date.now()}`,
+      // No Render ou produção, a URL do webhook deve ser acessível publicamente
+      notification_url: process.env.RENDER_EXTERNAL_URL 
+        ? `${process.env.RENDER_EXTERNAL_URL}/api/webhooks/mercadopago`
+        : undefined,
     };
 
     return this.createPreference(payload);
   }
 
   /**
-   * Verificar status de um pagamento
+   * Obter informações de um pagamento específico
    */
-  async getPaymentStatus(preferenceId: string): Promise<any> {
+  async getPayment(paymentId: string): Promise<any> {
     try {
       const response = await axios.get(
-        `https://api.mercadopago.com/checkout/preferences/${preferenceId}`,
+        `https://api.mercadopago.com/v1/payments/${paymentId}`,
         {
           headers: {
             'Authorization': `Bearer ${this.config.accessToken}`,
@@ -120,8 +126,8 @@ class MercadoPagoService {
       );
       return response.data;
     } catch (error) {
-      console.error('Erro ao verificar status do pagamento:', error);
-      throw new Error('Falha ao verificar status do pagamento');
+      console.error('Erro ao buscar pagamento no Mercado Pago:', error);
+      throw new Error('Falha ao buscar informações do pagamento');
     }
   }
 
@@ -130,14 +136,33 @@ class MercadoPagoService {
    */
   async processWebhookNotification(body: any): Promise<boolean> {
     try {
-      // Validar a assinatura do webhook (opcional mas recomendado)
-      // Aqui você implementaria a validação de assinatura
+      console.log('Webhook recebido:', JSON.stringify(body));
 
-      if (body.type === 'payment') {
-        const paymentId = body.data?.id;
-        console.log(`Pagamento recebido: ${paymentId}`);
-        // Processar o pagamento aqui
-        return true;
+      // O Mercado Pago envia notificações de diferentes tipos
+      // O tipo 'payment' é o que nos interessa para confirmar o upgrade
+      if (body.type === 'payment' || body.action === 'payment.created' || body.action === 'payment.updated') {
+        const paymentId = body.data?.id || body.id;
+        if (!paymentId) return false;
+
+        const payment = await this.getPayment(paymentId);
+        
+        // Verificar se o pagamento foi aprovado
+        if (payment.status === 'approved') {
+          const externalReference = payment.external_reference;
+          
+          if (externalReference && externalReference.startsWith('user_')) {
+            // Formato: user_{userId}_plan_{planCode}_{timestamp}
+            const parts = externalReference.split('_');
+            const userId = parseInt(parts[1], 10);
+            const planCode = parts[3] as 'pro' | 'elite';
+
+            if (!isNaN(userId) && (planCode === 'pro' || planCode === 'elite')) {
+              console.log(`Atualizando plano do usuário ${userId} para ${planCode}`);
+              await db.updateUserPlan(userId, planCode);
+              return true;
+            }
+          }
+        }
       }
 
       return false;

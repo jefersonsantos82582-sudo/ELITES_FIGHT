@@ -1,12 +1,12 @@
 import { trpc } from "@/lib/trpc";
-import { COOKIE_NAME, UNAUTHED_ERR_MSG } from '@shared/const';
+import { UNAUTHED_ERR_MSG } from '@shared/const';
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { httpBatchLink, TRPCClientError } from "@trpc/client";
 import { createRoot } from "react-dom/client";
 import superjson from "superjson";
 import App from "./App";
-import { startLogin } from "./const";
 import "./index.css";
+import { auth } from "@/lib/firebase";
 
 const queryClient = new QueryClient();
 
@@ -17,8 +17,10 @@ const redirectToLoginIfUnauthorized = (error: unknown) => {
   const isUnauthorized = error.message === UNAUTHED_ERR_MSG;
 
   if (!isUnauthorized) return;
-
-  startLogin();
+  
+  // No Firebase, o redirecionamento ou abertura do popup é tratado pelo hook useAuth
+  // ou manualmente nos componentes. Aqui apenas limpamos o estado se necessário.
+  console.warn("Usuário não autorizado, redirecionando para login...");
 };
 
 queryClient.getQueryCache().subscribe(event => {
@@ -38,9 +40,9 @@ queryClient.getMutationCache().subscribe(event => {
 });
 
 const getBaseUrl = () => {
-  if (typeof window !== "undefined") return ""; // browser should use relative url
-  if (process.env.RENDER_EXTERNAL_URL) return process.env.RENDER_EXTERNAL_URL; // SSR should use external url
-  return `http://localhost:${process.env.PORT ?? 3000}`; // dev SSR should use localhost
+  if (typeof window !== "undefined") return ""; 
+  if (process.env.RENDER_EXTERNAL_URL) return process.env.RENDER_EXTERNAL_URL; 
+  return `http://localhost:${process.env.PORT ?? 3000}`; 
 };
 
 const trpcClient = trpc.createClient({
@@ -48,23 +50,22 @@ const trpcClient = trpc.createClient({
     httpBatchLink({
       url: `${getBaseUrl()}/api/trpc`,
       transformer: superjson,
-      headers() {
-        // Preview auto-login fallback: when the browser blocks iframe cookies
-        // (Safari ITP / private browsing / WebView), the runtime mirrors the
-        // session into sessionStorage so we can forward it as a Bearer token.
-        // The regular OAuth cookie flow keeps working and takes priority server-side.
+      async headers() {
         try {
-          const raw = sessionStorage.getItem("manus-cookie");
-          if (raw) {
-            const prefix = `${COOKIE_NAME}=`;
-            const pair = raw.split(";").find(s => s.trim().startsWith(prefix));
-            const token = pair?.trim().slice(prefix.length);
-            if (token) {
-              return { Authorization: `Bearer ${token}` };
-            }
+          // Pegar o token atual do Firebase
+          const user = auth.currentUser;
+          if (user) {
+            const token = await user.getIdToken();
+            return { Authorization: `Bearer ${token}` };
           }
-        } catch {
-          // sessionStorage unavailable
+          
+          // Fallback para o token no sessionStorage (caso o Firebase ainda não tenha carregado o currentUser)
+          const fbToken = sessionStorage.getItem("firebase-token");
+          if (fbToken) {
+            return { Authorization: `Bearer ${fbToken}` };
+          }
+        } catch (err) {
+          console.error("Erro ao obter token do Firebase para o header:", err);
         }
         return {};
       },

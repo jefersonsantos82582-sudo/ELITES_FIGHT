@@ -34,15 +34,6 @@ export const adminRouter = router({
   }),
 
   /**
-   * Listar todos os pagamentos
-   */
-  listPayments: adminProcedure.query(async () => {
-    // Aqui você pode buscar pagamentos do banco de dados
-    // Por enquanto, retornando um array vazio
-    return [];
-  }),
-
-  /**
    * Listar todos os usuários
    */
   listAllUsers: adminProcedure.query(async () => {
@@ -53,7 +44,7 @@ export const adminRouter = router({
    * Listar todos os modelos
    */
   listAllTemplates: adminProcedure.query(async () => {
-    return db.getAllTemplates();
+    return db.getAllTemplatesAdmin();
   }),
 
   /**
@@ -94,8 +85,11 @@ export const adminRouter = router({
       z.object({
         id: z.number(),
         name: z.string().optional(),
+        slug: z.string().optional(),
+        categoryId: z.number().optional(),
         description: z.string().optional(),
         plan: z.enum(["free", "pro", "elite"]).optional(),
+        columns: z.any().optional(),
         headerColor: z.string().optional(),
         accentColor: z.string().optional(),
         isActive: z.boolean().optional(),
@@ -116,6 +110,32 @@ export const adminRouter = router({
     }),
 
   /**
+   * Criar nova categoria
+   */
+  createCategory: adminProcedure
+    .input(
+      z.object({
+        name: z.string().min(1),
+        slug: z.string().min(1),
+        description: z.string().optional(),
+        icon: z.string().optional(),
+        displayOrder: z.number().default(0),
+      })
+    )
+    .mutation(async ({ input }) => {
+      return db.createCategory(input);
+    }),
+
+  /**
+   * Deletar categoria
+   */
+  deleteCategory: adminProcedure
+    .input(z.object({ id: z.number() }))
+    .mutation(async ({ input }) => {
+      return db.deleteCategory(input.id);
+    }),
+
+  /**
    * Atualizar plano
    */
   updatePlan: adminProcedure
@@ -125,6 +145,9 @@ export const adminRouter = router({
         priceMonthly: z.string().optional(),
         priceYearly: z.string().optional(),
         description: z.string().optional(),
+        maxTemplates: z.number().optional(),
+        maxThemes: z.number().optional(),
+        maxAiUses: z.number().optional(),
       })
     )
     .mutation(async ({ input }) => {
@@ -158,6 +181,20 @@ export const adminRouter = router({
     )
     .mutation(async ({ input }) => {
       return db.updateUserSuspended(input.userId, input.suspended);
+    }),
+
+  /**
+   * Atualizar permissão do usuário
+   */
+  updateUserRole: adminProcedure
+    .input(
+      z.object({
+        userId: z.number(),
+        role: z.enum(["user", "admin"]),
+      })
+    )
+    .mutation(async ({ input }) => {
+      return db.updateUserRole(input.userId, input.role);
     }),
 
   /**

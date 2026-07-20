@@ -3,11 +3,11 @@ import express from "express";
 import { createServer } from "http";
 import net from "net";
 import { createExpressMiddleware } from "@trpc/server/adapters/express";
-import { registerOAuthRoutes } from "./oauth";
 import { registerStorageProxy } from "./storageProxy";
 import { appRouter } from "../routers";
 import { createContext } from "./context";
 import { serveStatic, setupVite } from "./vite";
+import MercadoPagoService from "../services/mercadoPago";
 
 function isPortAvailable(port: number): Promise<boolean> {
   return new Promise(resolve => {
@@ -35,7 +35,24 @@ async function startServer() {
   app.use(express.json({ limit: "50mb" }));
   app.use(express.urlencoded({ limit: "50mb", extended: true }));
   registerStorageProxy(app);
-  registerOAuthRoutes(app);
+  
+  // Webhook dedicado para o Mercado Pago (mais confiável que via tRPC)
+  app.post("/api/webhooks/mercadopago", async (req, res) => {
+    const accessToken = process.env.MERCADO_PAGO_ACCESS_TOKEN;
+    if (!accessToken) {
+      return res.status(500).json({ error: "Mercado Pago não configurado" });
+    }
+
+    try {
+      const mpService = new MercadoPagoService({ accessToken });
+      const processed = await mpService.processWebhookNotification(req.body);
+      res.status(200).json({ success: processed });
+    } catch (error) {
+      console.error("Erro no webhook do Mercado Pago:", error);
+      res.status(500).json({ error: "Erro interno" });
+    }
+  });
+
   // tRPC API
   app.use(
     "/api/trpc",

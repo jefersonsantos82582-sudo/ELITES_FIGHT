@@ -49,7 +49,7 @@ export default function Settings() {
             </div>
           </div>
           <p className="text-xs text-muted-foreground mt-3">
-            Seu perfil é gerenciado pela conta Manus conectada.
+            Seu perfil é gerenciado pela sua conta do Google via Firebase.
           </p>
         </Card>
 
@@ -98,7 +98,7 @@ export default function Settings() {
             Segurança
           </h3>
           <p className="text-sm text-muted-foreground mb-4">
-            Sua conta é protegida pela autenticação Manus OAuth.
+            Sua conta é protegida pela autenticação Firebase Google Login.
           </p>
           <Button variant="outline" onClick={() => { logout(); toast.success("Sessão encerrada"); }}>
             Encerrar sessão

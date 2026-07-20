@@ -1,7 +1,7 @@
-import { startLogin } from "@/const";
 import { trpc } from "@/lib/trpc";
-import { TRPCClientError } from "@trpc/client";
-import { useCallback, useEffect, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { auth, googleProvider } from "@/lib/firebase";
+import { signInWithPopup, signOut, onAuthStateChanged, User as FirebaseUser } from "firebase/auth";
 
 type UseAuthOptions = {
   redirectOnUnauthenticated?: boolean;
@@ -9,90 +9,88 @@ type UseAuthOptions = {
 };
 
 export function useAuth(options?: UseAuthOptions) {
-  // Login is started via startLogin() in the effect below, only when we actually
-  // navigate — never during render. startLogin() mints a one-time nonce + writes
-  // the state cookie, so calling it per render would overwrite the cookie and
-  // desync it from an in-flight login's `state`.
   const { redirectOnUnauthenticated = false, redirectPath } = options ?? {};
   const utils = trpc.useUtils();
+  const [fbUser, setFbUser] = useState<FirebaseUser | null>(null);
+  const [fbLoading, setFbLoading] = useState(true);
 
   const meQuery = trpc.auth.me.useQuery(undefined, {
     retry: false,
     refetchOnWindowFocus: false,
+    enabled: !fbLoading,
   });
 
-  const logoutMutation = trpc.auth.logout.useMutation({
-    onSuccess: () => {
-      utils.auth.me.setData(undefined, null);
-    },
-  });
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      setFbUser(user);
+      setFbLoading(false);
+      if (user) {
+        // Quando o usuário loga no Firebase, sincronizamos com o backend
+        user.getIdToken().then((token) => {
+          sessionStorage.setItem("firebase-token", token);
+          utils.auth.me.invalidate();
+        });
+      } else {
+        sessionStorage.removeItem("firebase-token");
+        utils.auth.me.setData(undefined, null);
+      }
+    });
+    return () => unsubscribe();
+  }, [utils]);
+
+  const login = useCallback(async () => {
+    try {
+      await signInWithPopup(auth, googleProvider);
+    } catch (error) {
+      console.error("Erro ao fazer login com Google:", error);
+      throw error;
+    }
+  }, []);
 
   const logout = useCallback(async () => {
     try {
-      await logoutMutation.mutateAsync();
-    } catch (error: unknown) {
-      if (
-        error instanceof TRPCClientError &&
-        error.data?.code === "UNAUTHORIZED"
-      ) {
-        return;
-      }
-      throw error;
-    } finally {
-      // Clear the Preview auto-login token mirrored into sessionStorage, so
-      // header-based sessions (Safari ITP / WebView) are logged out too. The
-      // backend cookie is cleared by the logout mutation.
-      try {
-        sessionStorage.removeItem("manus-cookie");
-      } catch {}
+      await signOut(auth);
+      sessionStorage.removeItem("firebase-token");
       utils.auth.me.setData(undefined, null);
       await utils.auth.me.invalidate();
+    } catch (error) {
+      console.error("Erro ao fazer logout:", error);
+      throw error;
     }
-  }, [logoutMutation, utils]);
+  }, [utils]);
 
   const state = useMemo(() => {
-    localStorage.setItem(
-      "manus-runtime-user-info",
-      JSON.stringify(meQuery.data)
-    );
     return {
       user: meQuery.data ?? null,
-      loading: meQuery.isLoading || logoutMutation.isPending,
-      error: meQuery.error ?? logoutMutation.error ?? null,
+      loading: fbLoading || meQuery.isLoading,
+      error: meQuery.error ?? null,
       isAuthenticated: Boolean(meQuery.data),
     };
-  }, [
-    meQuery.data,
-    meQuery.error,
-    meQuery.isLoading,
-    logoutMutation.error,
-    logoutMutation.isPending,
-  ]);
+  }, [meQuery.data, meQuery.error, meQuery.isLoading, fbLoading]);
 
   useEffect(() => {
     if (!redirectOnUnauthenticated) return;
-    if (meQuery.isLoading || logoutMutation.isPending) return;
+    if (fbLoading || meQuery.isLoading) return;
     if (state.user) return;
     if (typeof window === "undefined") return;
     if (redirectPath && window.location.pathname === redirectPath) return;
 
-    // Navigate at this moment only. startLogin() mints the nonce + cookie itself.
     if (redirectPath) {
       window.location.href = redirectPath;
-    } else {
-      startLogin();
     }
   }, [
     redirectOnUnauthenticated,
     redirectPath,
-    logoutMutation.isPending,
+    fbLoading,
     meQuery.isLoading,
     state.user,
+    login,
   ]);
 
   return {
     ...state,
     refresh: () => meQuery.refetch(),
+    login,
     logout,
   };
 }

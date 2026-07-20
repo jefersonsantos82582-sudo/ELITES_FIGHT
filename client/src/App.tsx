@@ -10,6 +10,9 @@ import Templates from "./pages/Templates";
 import Generator from "./pages/Generator";
 import Settings from "./pages/Settings";
 import Admin from "./pages/Admin";
+import Checkout from "./pages/Checkout";
+import CheckoutSuccess from "./pages/CheckoutSuccess";
+import CheckoutFailure from "./pages/CheckoutFailure";
 
 function Router() {
   return (
@@ -19,6 +22,9 @@ function Router() {
       <Route path="/dashboard/modelos" component={Templates} />
       <Route path="/dashboard/gerador" component={Generator} />
       <Route path="/dashboard/config" component={Settings} />
+      <Route path="/checkout" component={Checkout} />
+      <Route path="/checkout/success" component={CheckoutSuccess} />
+      <Route path="/checkout/failure" component={CheckoutFailure} />
       <Route path="/admin" component={Admin} />
       <Route path="/404" component={NotFound} />
       <Route component={NotFound} />

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   LayoutDashboard, Users, FileSpreadsheet, Tag, Crown, Settings,
   TrendingUp, FileDown, UserCog, Trash2, Plus, Edit, Ban, CheckCircle,
@@ -12,7 +12,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { trpc } from "@/lib/trpc";
 import { useAuth } from "@/_core/hooks/useAuth";
@@ -220,23 +220,24 @@ function TemplateDialog({ open, onOpenChange, template, categories }: {
   const [headerColor, setHeaderColor] = useState("#D4AF37");
   const [accentColor, setAccentColor] = useState("#1A1A1A");
 
-  // Reset form when dialog opens
-  useState(() => {
-    if (template) {
-      setName(template.name || "");
-      setSlug(template.slug || "");
-      setCategoryId(String(template.categoryId || ""));
-      setDescription(template.description || "");
-      setPlan(template.plan || "free");
-      setColumnsJson(JSON.stringify(template.columns || [], null, 2));
-      setHeaderColor(template.headerColor || "#D4AF37");
-      setAccentColor(template.accentColor || "#1A1A1A");
-    } else {
-      setName(""); setSlug(""); setCategoryId(""); setDescription("");
-      setPlan("free"); setColumnsJson("[]");
-      setHeaderColor("#D4AF37"); setAccentColor("#1A1A1A");
+  useEffect(() => {
+    if (open) {
+      if (template) {
+        setName(template.name || "");
+        setSlug(template.slug || "");
+        setCategoryId(String(template.categoryId || ""));
+        setDescription(template.description || "");
+        setPlan(template.plan || "free");
+        setColumnsJson(JSON.stringify(template.columns || [], null, 2));
+        setHeaderColor(template.headerColor || "#D4AF37");
+        setAccentColor(template.accentColor || "#1A1A1A");
+      } else {
+        setName(""); setSlug(""); setCategoryId(""); setDescription("");
+        setPlan("free"); setColumnsJson("[]");
+        setHeaderColor("#D4AF37"); setAccentColor("#1A1A1A");
+      }
     }
-  });
+  }, [open, template]);
 
   const createMutation = trpc.admin.createTemplate.useMutation({
     onSuccess: () => { utils.admin.listAllTemplates.invalidate(); toast.success("Modelo criado"); onOpenChange(false); },
@@ -354,13 +355,14 @@ function CategoriesTab() {
   const [description, setDescription] = useState("");
   const [icon, setIcon] = useState("");
 
-  const createMutation = (trpc.admin as any).createCategory.useMutation({
-    onSuccess: () => { utils.categories.list.invalidate(); toast.success("Categoria criada"); setName(""); setSlug(""); },
-    onError: (e: any) => toast.error(e.message),
+  const createMutation = trpc.admin.createCategory.useMutation({
+    onSuccess: () => { utils.categories.list.invalidate(); toast.success("Categoria criada"); setName(""); setSlug(""); setIcon(""); setDescription(""); },
+    onError: (e) => toast.error(e.message),
   });
 
-  const deleteMutation = (trpc.admin as any).deleteCategory.useMutation({
+  const deleteMutation = trpc.admin.deleteCategory.useMutation({
     onSuccess: () => { utils.categories.list.invalidate(); toast.success("Categoria excluída"); },
+    onError: (e) => toast.error(e.message),
   });
 
   return (
@@ -419,30 +421,30 @@ function CategoriesTab() {
 
 // ==================== Users Tab ====================
 function UsersTab() {
-  const { data: users } = (trpc.admin as any).listAllUsers.useQuery();
+  const { data: users } = trpc.admin.listAllUsers.useQuery();
   const utils = trpc.useUtils();
 
-  const updatePlanMutation = (trpc.admin as any).updateUserPlan.useMutation({
-    onSuccess: () => { (utils.admin as any).listAllUsers.invalidate(); toast.success("Plano atualizado"); },
+  const updatePlanMutation = trpc.admin.updateUserPlan.useMutation({
+    onSuccess: () => { utils.admin.listAllUsers.invalidate(); toast.success("Plano atualizado"); },
   });
 
-  const suspendMutation = (trpc.admin as any).suspendUser.useMutation({
-    onSuccess: () => { (utils.admin as any).listAllUsers.invalidate(); toast.success("Status atualizado"); },
+  const suspendMutation = trpc.admin.toggleUserSuspension.useMutation({
+    onSuccess: () => { utils.admin.listAllUsers.invalidate(); toast.success("Status atualizado"); },
   });
 
-  const roleMutation = (trpc.admin as any).updateUserRole.useMutation({
-    onSuccess: () => { (utils.admin as any).listAllUsers.invalidate(); toast.success("Permissão atualizada"); },
+  const roleMutation = trpc.admin.updateUserRole.useMutation({
+    onSuccess: () => { utils.admin.listAllUsers.invalidate(); toast.success("Permissão atualizada"); },
   });
 
-  const deleteMutation = (trpc.admin as any).deleteUser.useMutation({
-    onSuccess: () => { (utils.admin as any).listAllUsers.invalidate(); toast.success("Usuário excluído"); },
+  const deleteMutation = trpc.admin.deleteUser.useMutation({
+    onSuccess: () => { utils.admin.listAllUsers.invalidate(); toast.success("Usuário excluído"); },
   });
 
   return (
     <div className="space-y-4">
       <h3 className="font-semibold">Usuários ({users?.length || 0})</h3>
       <div className="space-y-2">
-        {(users as any[])?.map((u: any) => (
+        {users?.map((u) => (
           <Card key={u.id} className="p-4 bg-card/50 border-border/30">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div className="min-w-0 flex-1">
