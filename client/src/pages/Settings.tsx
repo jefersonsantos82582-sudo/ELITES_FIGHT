@@ -10,10 +10,14 @@ import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 
 export default function Settings() {
-  const { user, logout } = useAuth();
-  const { data: overview } = trpc.dashboard.overview.useQuery();
+  const { user, loading: authLoading, logout } = useAuth();
+  const { data: overview } = trpc.dashboard.overview.useQuery(undefined, {
+    enabled: !authLoading && Boolean(user),
+    retry: 1,
+    refetchOnWindowFocus: false,
+  });
 
-  const planBadgeColor = {
+  const planBadgeColor: Record<"free" | "pro" | "elite", string> = {
     free: "bg-muted text-muted-foreground",
     pro: "bg-primary/15 text-primary",
     elite: "bg-gold-gradient text-black",
@@ -100,7 +104,14 @@ export default function Settings() {
           <p className="text-sm text-muted-foreground mb-4">
             Sua conta é protegida pela autenticação Firebase Google Login.
           </p>
-          <Button variant="outline" onClick={() => { logout(); toast.success("Sessão encerrada"); }}>
+          <Button
+            variant="outline"
+            onClick={() => {
+              void logout()
+                .then(() => toast.success("Sessão encerrada"))
+                .catch((error) => toast.error(error instanceof Error ? error.message : "Não foi possível encerrar a sessão"));
+            }}
+          >
             Encerrar sessão
           </Button>
         </Card>

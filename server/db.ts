@@ -1,34 +1,42 @@
-import { eq, desc, sql, and, gte, lte } from "drizzle-orm";
-import { drizzle } from "drizzle-orm/mysql2";
+import { and, count, desc, eq, gte, sql } from "drizzle-orm";
+import { drizzle } from "drizzle-orm/postgres-js";
+import postgres from "postgres";
 import {
-  InsertUser,
-  users,
+  announcements,
   categories,
-  templates,
+  coupons,
   generatedSheets,
   plans,
   siteSettings,
-  coupons,
-  announcements,
-  type Template,
+  templates,
+  users,
   type Category,
-  type Plan,
   type GeneratedSheet,
+  type InsertUser,
+  type Plan,
   type SiteSetting,
+  type Template,
 } from "../drizzle/schema";
-import { ENV } from './_core/env';
+import { ENV } from "./_core/env";
 
+let client: postgres.Sql | null = null;
 let _db: ReturnType<typeof drizzle> | null = null;
 
 export async function getDb() {
-  if (!_db && process.env.DATABASE_URL) {
-    try {
-      _db = drizzle(process.env.DATABASE_URL);
-    } catch (error) {
-      console.warn("[Database] Failed to connect:", error);
-      _db = null;
-    }
+  if (_db || !process.env.DATABASE_URL) return _db;
+
+  try {
+    client = postgres(process.env.DATABASE_URL, {
+      max: 5,
+      prepare: false,
+    });
+    _db = drizzle(client);
+  } catch (error) {
+    console.error("[Database] Não foi possível inicializar PostgreSQL:", error);
+    client = null;
+    _db = null;
   }
+
   return _db;
 }
 
@@ -41,66 +49,47 @@ export async function upsertUser(user: InsertUser): Promise<void> {
 
   const db = await getDb();
   if (!db) {
-    console.warn("[Database] Cannot upsert user: database not available");
-    return;
+    throw new Error("Database is not configured");
   }
 
-  try {
-    const values: InsertUser = { openId: user.openId };
-    const updateSet: Record<string, unknown> = {};
+  const now = new Date();
+  const values: InsertUser = {
+    openId: user.openId,
+    name: user.name ?? null,
+    email: user.email ?? null,
+    loginMethod: user.loginMethod ?? null,
+    role: user.role ?? (user.openId === ENV.ownerOpenId ? "admin" : undefined),
+    lastSignedIn: user.lastSignedIn ?? now,
+  };
 
-    const textFields = ["name", "email", "loginMethod"] as const;
-    type TextField = (typeof textFields)[number];
-
-    const assignNullable = (field: TextField) => {
-      const value = user[field];
-      if (value === undefined) return;
-      const normalized = value ?? null;
-      values[field] = normalized;
-      updateSet[field] = normalized;
-    };
-
-    textFields.forEach(assignNullable);
-
-    if (user.lastSignedIn !== undefined) {
-      values.lastSignedIn = user.lastSignedIn;
-      updateSet.lastSignedIn = user.lastSignedIn;
-    }
-    if (user.role !== undefined) {
-      values.role = user.role;
-      updateSet.role = user.role;
-    } else if (user.openId === ENV.ownerOpenId) {
-      values.role = 'admin';
-      updateSet.role = 'admin';
-    }
-
-    if (!values.lastSignedIn) {
-      values.lastSignedIn = new Date();
-    }
-
-    if (Object.keys(updateSet).length === 0) {
-      updateSet.lastSignedIn = new Date();
-    }
-
-    await db.insert(users).values(values).onDuplicateKeyUpdate({ set: updateSet });
-  } catch (error) {
-    console.error("[Database] Failed to upsert user:", error);
-    throw error;
-  }
+  await db
+    .insert(users)
+    .values(values)
+    .onConflictDoUpdate({
+      target: users.openId,
+      set: {
+        name: values.name,
+        email: values.email,
+        loginMethod: values.loginMethod,
+        ...(values.role ? { role: values.role } : {}),
+        lastSignedIn: values.lastSignedIn,
+        updatedAt: now,
+      },
+    });
 }
 
 export async function getUserByOpenId(openId: string) {
   const db = await getDb();
   if (!db) return undefined;
   const result = await db.select().from(users).where(eq(users.openId, openId)).limit(1);
-  return result.length > 0 ? result[0] : undefined;
+  return result[0];
 }
 
 export async function getUserById(id: number) {
   const db = await getDb();
   if (!db) return undefined;
   const result = await db.select().from(users).where(eq(users.id, id)).limit(1);
-  return result.length > 0 ? result[0] : undefined;
+  return result[0];
 }
 
 export async function getAllUsers() {
@@ -112,27 +101,31 @@ export async function getAllUsers() {
 export async function updateUserPlan(userId: number, plan: "free" | "pro" | "elite") {
   const db = await getDb();
   if (!db) return;
-  await db.update(users).set({ plan }).where(eq(users.id, userId));
+  await db.update(users).set({ plan, updatedAt: new Date() }).where(eq(users.id, userId));
 }
 
 export async function updateUserSuspended(userId: number, suspended: boolean) {
   const db = await getDb();
   if (!db) return;
-  await db.update(users).set({ suspended }).where(eq(users.id, userId));
+  await db.update(users).set({ suspended, updatedAt: new Date() }).where(eq(users.id, userId));
 }
 
 export async function updateUserRole(userId: number, role: "user" | "admin") {
   const db = await getDb();
   if (!db) return;
-  await db.update(users).set({ role }).where(eq(users.id, userId));
+  await db.update(users).set({ role, updatedAt: new Date() }).where(eq(users.id, userId));
 }
 
 export async function incrementSheetsGenerated(userId: number) {
   const db = await getDb();
   if (!db) return;
-  await db.update(users).set({
-    sheetsGenerated: sql`${users.sheetsGenerated} + 1`,
-  }).where(eq(users.id, userId));
+  await db
+    .update(users)
+    .set({
+      sheetsGenerated: sql`${users.sheetsGenerated} + 1`,
+      updatedAt: new Date(),
+    })
+    .where(eq(users.id, userId));
 }
 
 export async function deleteUser(userId: number) {
@@ -156,19 +149,31 @@ export async function getCategoryById(id: number) {
   return result[0];
 }
 
-export async function createCategory(data: { name: string; slug: string; description?: string; icon?: string; displayOrder?: number }) {
+export async function createCategory(data: {
+  name: string;
+  slug: string;
+  description?: string;
+  icon?: string;
+  displayOrder?: number;
+}) {
   const db = await getDb();
   if (!db) return undefined;
-  const result = await db.insert(categories).values(data);
-  const id = (result as any).insertId;
-  return getCategoryById(id);
+  const [created] = await db.insert(categories).values(data).returning();
+  return created;
 }
 
-export async function updateCategory(id: number, data: Partial<{ name: string; slug: string; description: string; icon: string; displayOrder: number }>) {
+export async function updateCategory(
+  id: number,
+  data: Partial<{ name: string; slug: string; description: string; icon: string; displayOrder: number }>,
+) {
   const db = await getDb();
   if (!db) return;
-  await db.update(categories).set(data).where(eq(categories.id, id));
-  return getCategoryById(id);
+  const [updated] = await db
+    .update(categories)
+    .set({ ...data, updatedAt: new Date() })
+    .where(eq(categories.id, id))
+    .returning();
+  return updated;
 }
 
 export async function deleteCategory(id: number) {
@@ -188,7 +193,9 @@ export async function getAllTemplates(): Promise<Template[]> {
 export async function getTemplatesByCategory(categoryId: number): Promise<Template[]> {
   const db = await getDb();
   if (!db) return [];
-  return db.select().from(templates)
+  return db
+    .select()
+    .from(templates)
     .where(and(eq(templates.categoryId, categoryId), eq(templates.isActive, true)))
     .orderBy(templates.displayOrder);
 }
@@ -203,7 +210,9 @@ export async function getTemplateById(id: number) {
 export async function getFeaturedTemplates(): Promise<Template[]> {
   const db = await getDb();
   if (!db) return [];
-  return db.select().from(templates)
+  return db
+    .select()
+    .from(templates)
     .where(and(eq(templates.isFeatured, true), eq(templates.isActive, true)))
     .orderBy(templates.displayOrder);
 }
@@ -215,26 +224,50 @@ export async function getAllTemplatesAdmin(): Promise<Template[]> {
 }
 
 export async function createTemplate(data: {
-  categoryId: number; name: string; slug: string; description?: string;
-  plan: "free" | "pro" | "elite"; columns: unknown; sampleRows?: unknown;
-  headerColor?: string; accentColor?: string; isFeatured?: boolean; isActive?: boolean; displayOrder?: number;
+  categoryId: number;
+  name: string;
+  slug: string;
+  description?: string;
+  plan: "free" | "pro" | "elite";
+  columns: unknown;
+  sampleRows?: unknown;
+  headerColor?: string;
+  accentColor?: string;
+  isFeatured?: boolean;
+  isActive?: boolean;
+  displayOrder?: number;
 }) {
   const db = await getDb();
   if (!db) return undefined;
-  const result = await db.insert(templates).values(data as any);
-  const id = (result as any).insertId;
-  return getTemplateById(id);
+  const [created] = await db.insert(templates).values(data).returning();
+  return created;
 }
 
-export async function updateTemplate(id: number, data: Partial<{
-  categoryId: number; name: string; slug: string; description: string;
-  plan: "free" | "pro" | "elite"; columns: unknown; sampleRows: unknown;
-  headerColor: string; accentColor: string; isFeatured: boolean; isActive: boolean; displayOrder: number;
-}>) {
+export async function updateTemplate(
+  id: number,
+  data: Partial<{
+    categoryId: number;
+    name: string;
+    slug: string;
+    description: string;
+    plan: "free" | "pro" | "elite";
+    columns: unknown;
+    sampleRows: unknown;
+    headerColor: string;
+    accentColor: string;
+    isFeatured: boolean;
+    isActive: boolean;
+    displayOrder: number;
+  }>,
+) {
   const db = await getDb();
   if (!db) return;
-  await db.update(templates).set(data as any).where(eq(templates.id, id));
-  return getTemplateById(id);
+  const [updated] = await db
+    .update(templates)
+    .set({ ...data, updatedAt: new Date() })
+    .where(eq(templates.id, id))
+    .returning();
+  return updated;
 }
 
 export async function deleteTemplate(id: number) {
@@ -246,23 +279,38 @@ export async function deleteTemplate(id: number) {
 // ==================== Generated Sheets ====================
 
 export async function createGeneratedSheet(data: {
-  userId: number; templateId: number; templateName: string;
-  customName: string; fileUrl?: string; fileKey?: string;
-}) {
+  userId: number;
+  templateId: number;
+  templateName: string;
+  customName: string;
+  fileUrl?: string;
+  fileKey?: string;
+}): Promise<GeneratedSheet | undefined> {
   const db = await getDb();
   if (!db) return undefined;
-  const result = await db.insert(generatedSheets).values(data);
-  const id = (result as any).insertId;
-  const rows = await db.select().from(generatedSheets).where(eq(generatedSheets.id, id)).limit(1);
-  return rows[0];
+  const [created] = await db.insert(generatedSheets).values(data).returning();
+  return created;
 }
 
 export async function getGeneratedSheetsByUser(userId: number): Promise<GeneratedSheet[]> {
   const db = await getDb();
   if (!db) return [];
-  return db.select().from(generatedSheets)
+  return db
+    .select()
+    .from(generatedSheets)
     .where(eq(generatedSheets.userId, userId))
     .orderBy(desc(generatedSheets.createdAt));
+}
+
+export async function countGeneratedSheetsSince(userId: number, since: Date): Promise<number> {
+  const db = await getDb();
+  if (!db) return 0;
+
+  const result = await db
+    .select({ count: count() })
+    .from(generatedSheets)
+    .where(and(eq(generatedSheets.userId, userId), gte(generatedSheets.createdAt, since)));
+  return Number(result[0]?.count ?? 0);
 }
 
 export async function getGeneratedSheetById(id: number) {
@@ -293,14 +341,32 @@ export async function getPlanByCode(code: "free" | "pro" | "elite") {
   return result[0];
 }
 
-export async function updatePlan(id: number, data: Partial<{
-  name: string; priceMonthly: string; priceYearly: string; description: string;
-  features: unknown; maxTemplates: number; maxThemes: number; maxAiUses: number;
-  unlimitedSheets: boolean; hasWatermark: boolean; customLogo: boolean; isActive: boolean; displayOrder: number;
-}>) {
+export async function updatePlan(
+  id: number,
+  data: Partial<{
+    name: string;
+    priceMonthly: string;
+    priceYearly: string;
+    description: string;
+    features: unknown;
+    maxTemplates: number;
+    maxThemes: number;
+    maxAiUses: number;
+    unlimitedSheets: boolean;
+    hasWatermark: boolean;
+    customLogo: boolean;
+    isActive: boolean;
+    displayOrder: number;
+  }>,
+) {
   const db = await getDb();
   if (!db) return;
-  await db.update(plans).set(data as any).where(eq(plans.id, id));
+  const [updated] = await db
+    .update(plans)
+    .set({ ...data, updatedAt: new Date() })
+    .where(eq(plans.id, id))
+    .returning();
+  return updated;
 }
 
 // ==================== Site Settings ====================
@@ -321,8 +387,14 @@ export async function getAllSettings(): Promise<SiteSetting[]> {
 export async function upsertSetting(key: string, value: unknown) {
   const db = await getDb();
   if (!db) return;
-  await db.insert(siteSettings).values({ key, value: value as any })
-    .onDuplicateKeyUpdate({ set: { value: value as any } });
+  const now = new Date();
+  await db
+    .insert(siteSettings)
+    .values({ key, value })
+    .onConflictDoUpdate({
+      target: siteSettings.key,
+      set: { value, updatedAt: now },
+    });
 }
 
 // ==================== Coupons ====================
@@ -333,13 +405,16 @@ export async function getAllCoupons() {
   return db.select().from(coupons).orderBy(desc(coupons.createdAt));
 }
 
-export async function createCoupon(data: { code: string; discountPercent: number; maxUses: number; expiresAt?: Date }) {
+export async function createCoupon(data: {
+  code: string;
+  discountPercent: number;
+  maxUses: number;
+  expiresAt?: Date;
+}) {
   const db = await getDb();
   if (!db) return undefined;
-  const result = await db.insert(coupons).values(data);
-  const id = (result as any).insertId;
-  const rows = await db.select().from(coupons).where(eq(coupons.id, id)).limit(1);
-  return rows[0];
+  const [created] = await db.insert(coupons).values(data).returning();
+  return created;
 }
 
 export async function deleteCoupon(id: number) {
@@ -359,34 +434,40 @@ export async function getAllAnnouncements() {
 export async function createAnnouncement(data: { title: string; message: string; createdBy?: number }) {
   const db = await getDb();
   if (!db) return undefined;
-  const result = await db.insert(announcements).values(data);
-  const id = (result as any).insertId;
-  const rows = await db.select().from(announcements).where(eq(announcements.id, id)).limit(1);
-  return rows[0];
+  const [created] = await db.insert(announcements).values(data).returning();
+  return created;
 }
 
 // ==================== Statistics ====================
 
 export async function getStats() {
   const db = await getDb();
-  if (!db) return { totalUsers: 0, totalSheets: 0, totalTemplates: 0, planCounts: { free: 0, pro: 0, elite: 0 } };
+  if (!db) {
+    return {
+      totalUsers: 0,
+      totalSheets: 0,
+      totalTemplates: 0,
+      planCounts: { free: 0, pro: 0, elite: 0 },
+    };
+  }
 
-  const userCount = await db.select({ count: sql<number>`count(*)` }).from(users);
-  const sheetCount = await db.select({ count: sql<number>`count(*)` }).from(generatedSheets);
-  const templateCount = await db.select({ count: sql<number>`count(*)` }).from(templates).where(eq(templates.isActive, true));
-
-  const freeCount = await db.select({ count: sql<number>`count(*)` }).from(users).where(eq(users.plan, "free"));
-  const proCount = await db.select({ count: sql<number>`count(*)` }).from(users).where(eq(users.plan, "pro"));
-  const eliteCount = await db.select({ count: sql<number>`count(*)` }).from(users).where(eq(users.plan, "elite"));
+  const [userCount, sheetCount, templateCount, freeCount, proCount, eliteCount] = await Promise.all([
+    db.select({ count: count() }).from(users),
+    db.select({ count: count() }).from(generatedSheets),
+    db.select({ count: count() }).from(templates).where(eq(templates.isActive, true)),
+    db.select({ count: count() }).from(users).where(eq(users.plan, "free")),
+    db.select({ count: count() }).from(users).where(eq(users.plan, "pro")),
+    db.select({ count: count() }).from(users).where(eq(users.plan, "elite")),
+  ]);
 
   return {
-    totalUsers: userCount[0]?.count || 0,
-    totalSheets: sheetCount[0]?.count || 0,
-    totalTemplates: templateCount[0]?.count || 0,
+    totalUsers: userCount[0]?.count ?? 0,
+    totalSheets: sheetCount[0]?.count ?? 0,
+    totalTemplates: templateCount[0]?.count ?? 0,
     planCounts: {
-      free: freeCount[0]?.count || 0,
-      pro: proCount[0]?.count || 0,
-      elite: eliteCount[0]?.count || 0,
+      free: freeCount[0]?.count ?? 0,
+      pro: proCount[0]?.count ?? 0,
+      elite: eliteCount[0]?.count ?? 0,
     },
   };
 }

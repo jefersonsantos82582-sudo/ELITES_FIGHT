@@ -191,28 +191,32 @@ export async function generateSpreadsheet(opts: GenerateOptions): Promise<Buffer
   });
   ws.getRow(summaryRow).height = 26;
 
-  // --- Extra info row ---
+  // --- Extra information, watermark and footer ---
+  // Allocate each optional block from a cursor so that their merged ranges
+  // never overlap when both are present.
+  let footerRow = summaryRow + 2;
+
   if (opts.extraInfo) {
-    const infoRow = summaryRow + 2;
+    const infoRow = footerRow;
     ws.mergeCells(infoRow, 1, infoRow, cols.length);
     const infoCell = ws.getCell(infoRow, 1);
     infoCell.value = opts.extraInfo;
     infoCell.font = { name: "Inter", size: 9, italic: true, color: { argb: "FF666666" } };
     infoCell.alignment = { horizontal: "left" };
+    footerRow += 2;
   }
 
-  // --- Watermark (Free plan) ---
   if (opts.hasWatermark) {
-    const wmRow = summaryRow + 4;
+    const wmRow = footerRow;
     ws.mergeCells(wmRow, 1, wmRow, cols.length);
     const wmCell = ws.getCell(wmRow, 1);
     wmCell.value = "Gerado por ELITES_FIGHT — Faça upgrade para remover a marca d'água";
     wmCell.font = { name: "Inter", size: 8, italic: true, color: { argb: "FFD4AF37" } };
     wmCell.alignment = { horizontal: "center" };
+    footerRow += 2;
   }
 
   // --- Footer credit ---
-  const footerRow = (opts.extraInfo ? summaryRow + 3 : summaryRow + 2) + (opts.hasWatermark ? 1 : 0);
   ws.mergeCells(footerRow, 1, footerRow, cols.length);
   const footerCell = ws.getCell(footerRow, 1);
   footerCell.value = `ELITES_FIGHT | ${new Date().toLocaleDateString('pt-BR')} | ${opts.templateName}`;

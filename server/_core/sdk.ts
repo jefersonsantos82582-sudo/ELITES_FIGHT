@@ -1,54 +1,62 @@
 import { COOKIE_NAME } from "@shared/const";
 import { ForbiddenError } from "@shared/_core/errors";
+import { cert, getApps, initializeApp } from "firebase-admin/app";
+import { getAuth } from "firebase-admin/auth";
+import { createRemoteJWKSet, jwtVerify } from "jose";
 import { parse as parseCookieHeader } from "cookie";
 import type { Request } from "express";
 import type { User } from "../../drizzle/schema";
 import * as db from "../db";
-import admin from "firebase-admin";
 
-/**
- * Inicializa o Firebase Admin SDK.
- * Tenta carregar as credenciais da variável de ambiente FIREBASE_SERVICE_ACCOUNT.
- * Caso não exista, usa a configuração padrão para o projeto.
- */
-function initializeFirebase() {
-  // Em algumas versões do firebase-admin (especialmente em ESM), 
-  // admin.apps pode ser undefined ou estar em admin.default.apps
-  const apps = admin.apps || (admin as any).default?.apps || [];
-  if (apps.length) return;
+const FIREBASE_PROJECT_ID = process.env.FIREBASE_PROJECT_ID ?? "elites-fight";
+const FIREBASE_ISSUER = `https://securetoken.google.com/${FIREBASE_PROJECT_ID}`;
+const FIREBASE_JWKS = createRemoteJWKSet(
+  new URL("https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com"),
+);
 
-  const serviceAccountVar = process.env.FIREBASE_SERVICE_ACCOUNT;
-  
-  try {
-    if (serviceAccountVar) {
-      const serviceAccount = JSON.parse(serviceAccountVar);
-      admin.initializeApp({
-        credential: admin.credential.cert(serviceAccount),
-      });
-      console.log("[Firebase] Inicializado com Service Account da variável de ambiente.");
-    } else {
-      // Fallback para as credenciais fornecidas pelo usuário no chat
-      const fallbackConfig = {
-        projectId: "elites-fight",
-        clientEmail: "firebase-adminsdk-fbsvc@elites-fight.iam.gserviceaccount.com",
-        privateKey: (process.env.FIREBASE_PRIVATE_KEY || "-----BEGIN PRIVATE KEY-----\nMIIEvgIBADANBgkqhkiG9w0BAQEFAASCBKgwggSkAgEAAoIBAQCtjN0/+3Q7nsGI\nugie+3jTAzsfk55gQT0Kwyt4JwEWdemc2jBFfvL0XYimVbOMYXEcIm301Do3tAy0\nWQ3b+LGP6QRC1KCBTHDthspXDNJAfFsxGyC1iOtHlEaXQM4kqfxpicFr85slta3i\n3qO Z95FjYo+ulZzlm6uGK86Tzxa4bKSS7qx7HaZagak97aTk3PIf9vg+pC5jEoCD\nVmk+Ojjp+2VYOb7Od+EYrZh8IgUD8b2RRPVB3n5lK2J UMf8ygSbexmgsiLdBfZI9\niN9J/MB+5JCPz7ORAcSHGwk0ygYC1IppVj33Q+b7kyiYe9TbWM2Cp5t3I11N6Hvk\ngA9+pNDxAgMBAAECg gEACiNq/2Rcn2kATFD11PfC0KzlJMyWWXAmNT0+ilfY9+tu\neMPEQyMN5VmbdIAYK5C7r1WRj9ZgCkYB4f070oheMxZ9MbxDHhqNlEqmA lzU4YCC\nQUWg7QnxGK7gStC12i11+eJawsgp3ZOV82VnMETmoOQumZfS4RTtebqQaFEWNjLF\n79bgciBcNk8L3KbovStNKvrRqf8pykH 9lXMZjWaGaJFuUg0SQkeX23jMpexAVVgC\ntxH/PgPpBLXnC2maHn5coL/kCMJPZ+oI4oG3ap+Znz2z2VJygQQKZFgXxgvY2e9w\nc0A+l Gw3LaDsqOaJpknN7sR22P8sYb7UPZrTEw8viwKBgQDT8F8SGZxpIE4yF88s\nec9X/+vIZhVXl+TVYmZBdkBvQmXtbuWQqJ0nWnKBXF9Em O93IiF/BVTfkZKnJuv1\n4Me9BO8HF3U3B6N8VrN827tZNeL4U2sBixmS46lw/zKebhJbCBvi0rEebEqY7FP6\n2E6wtFcIc7d9NIEuZzmYl+t2+wKBgQDRoWc60+1XIIHBUxGjpHSnpZx6ph5Q9v2r\nKoVvh4LHAdTdngKupIKehh52mFypgn1W+nEKPt4jULW7/drp2hnCtapCLg cnJO0w\ngw+ylNYqevexPhQh5NadM5wdMsZirlDR4xqbBeUoH3mfTDA9dGHLMKZBrCAOcYUg\nUz66tkuEAwKBgQCghtULmZhty8lOidgi oNSam74UGLYblXH+6bv340BkxQ786t04\nV25JC2nlb3i9NXVTb+edFQW3HMTOlF1u6+V91snRPkRK/R8oI2dpr+jUZktWuaA4\nGAqzxn plmvXVKBwBFUBB6kG7gFx0PbRSMBpSHxY40aTuUaFy6z6lxJPVlwKBgE3K\nl4Q9INY0OfKD4QfY/3E3A9p/ysBA5+Gc5ed9Ygp3o4aaHGSyp8Yr/yIDaF9/DQQ5\n67jhm41/ZfFdQt+FEAoxX/0vF3hvO5XFDQ44LUGWYFRltRLe2MV9YXF0Zio4hcVd\ngYIFrgQ1qexzWXN0vNWq OAgm176EYeKdAapH+74BAoGBAJ7VkpuTlR6Zw3gn3zQU\naKwYim7m+wfmZrDXv+s7rLvUyVdmSsUzXRDs+BwP4IQt+VMZK+Vh80RoFLhL HSFc\njsaVD3uiZ/oK23XAEeU8lvmw+tl0INwiHQry8L4ftweu37woRkuKSuHZQ0hLZLsa\nhWmzpJeDAeb7n2ZVTQ7qqBEQ\n-----END PRIVATE KEY-----\n").replace(/\\n/g, "\n"),
-      };
+type FirebaseServiceAccount = {
+  project_id?: string;
+  client_email?: string;
+  private_key?: string;
+};
 
-      admin.initializeApp({
-        credential: admin.credential.cert(fallbackConfig),
-      });
-      console.log("[Firebase] Inicializado com configuração de fallback.");
+type VerifiedFirebaseToken = {
+  uid: string;
+  name?: string;
+  email?: string;
+};
+
+function getFirebaseAuth() {
+  if (!getApps().length) {
+    const serviceAccountRaw = process.env.FIREBASE_SERVICE_ACCOUNT;
+
+    if (!serviceAccountRaw) {
+      return null;
     }
-  } catch (error) {
-    console.error("[Firebase] Erro ao inicializar:", error);
-    // Fallback mínimo
-    try {
-      admin.initializeApp({ projectId: "elites-fight" });
-    } catch (e) {}
-  }
-}
 
-initializeFirebase();
+    let serviceAccount: FirebaseServiceAccount;
+    try {
+      serviceAccount = JSON.parse(serviceAccountRaw) as FirebaseServiceAccount;
+    } catch {
+      throw new Error("FIREBASE_SERVICE_ACCOUNT precisa conter um JSON válido");
+    }
+
+    if (!serviceAccount.client_email || !serviceAccount.private_key) {
+      throw new Error("FIREBASE_SERVICE_ACCOUNT não contém client_email e private_key");
+    }
+
+    initializeApp({
+      credential: cert({
+        projectId: serviceAccount.project_id ?? FIREBASE_PROJECT_ID,
+        clientEmail: serviceAccount.client_email,
+        privateKey: serviceAccount.private_key.replace(/\\n/g, "\n"),
+      }),
+      projectId: serviceAccount.project_id ?? FIREBASE_PROJECT_ID,
+    });
+  }
+
+  return getAuth();
+}
 
 export type SessionPayload = {
   openId: string;
@@ -61,8 +69,34 @@ class SDKServer {
     if (!cookieHeader) {
       return new Map<string, string>();
     }
-    const parsed = parseCookieHeader(cookieHeader);
-    return new Map(Object.entries(parsed));
+    return new Map(Object.entries(parseCookieHeader(cookieHeader)));
+  }
+
+  private async verifyFirebaseToken(idToken: string): Promise<VerifiedFirebaseToken> {
+    const firebaseAuth = getFirebaseAuth();
+    if (firebaseAuth) {
+      return firebaseAuth.verifyIdToken(idToken);
+    }
+
+    const { payload } = await jwtVerify(idToken, FIREBASE_JWKS, {
+      algorithms: ["RS256"],
+      audience: FIREBASE_PROJECT_ID,
+      issuer: FIREBASE_ISSUER,
+    });
+
+    const nowInSeconds = Math.floor(Date.now() / 1000);
+    if (typeof payload.sub !== "string" || payload.sub.length === 0 || payload.sub.length > 128) {
+      throw new Error("Token Firebase sem um identificador de usuário válido");
+    }
+    if (typeof payload.iat !== "number" || payload.iat > nowInSeconds) {
+      throw new Error("Token Firebase com data de emissão inválida");
+    }
+
+    return {
+      uid: payload.sub,
+      name: typeof payload.name === "string" ? payload.name : undefined,
+      email: typeof payload.email === "string" ? payload.email : undefined,
+    };
   }
 
   async authenticateRequest(req: Request): Promise<AuthenticatedUser> {
@@ -83,12 +117,11 @@ class SDKServer {
     }
 
     try {
-      const decodedToken = await admin.auth().verifyIdToken(idToken);
+      const decodedToken = await this.verifyFirebaseToken(idToken);
       const { uid, name, email } = decodedToken;
-
       const signedInAt = new Date();
-      let user = await db.getUserByOpenId(uid);
 
+      let user = await db.getUserByOpenId(uid);
       if (!user) {
         await db.upsertUser({
           openId: uid,
@@ -98,20 +131,20 @@ class SDKServer {
           lastSignedIn: signedInAt,
         });
         user = await db.getUserByOpenId(uid);
+      } else {
+        await db.upsertUser({
+          openId: user.openId,
+          lastSignedIn: signedInAt,
+        });
       }
 
       if (!user) {
-        throw ForbiddenError("User not found after sync");
+        throw new Error("Usuário não foi criado após a autenticação");
       }
-
-      await db.upsertUser({
-        openId: user.openId,
-        lastSignedIn: signedInAt,
-      });
 
       return user;
     } catch (error) {
-      console.error("[Auth] Firebase verification failed", error);
+      console.error("[Auth] Falha ao validar o token Firebase:", error);
       throw ForbiddenError("Invalid authentication token");
     }
   }

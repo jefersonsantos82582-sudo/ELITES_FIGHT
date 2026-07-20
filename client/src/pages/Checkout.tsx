@@ -14,7 +14,7 @@ import Footer from "@/components/Footer";
 import MercadoPagoCheckout from "@/components/MercadoPagoCheckout";
 
 export default function Checkout() {
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
   const [location, setLocation] = useLocation();
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -22,54 +22,64 @@ export default function Checkout() {
 
   // Extrair planCode da URL
   const searchParams = new URLSearchParams(window.location.search);
-  const planCode = searchParams.get("plan") as "pro" | "elite" | null;
+  const requestedPlan = searchParams.get("plan");
+  const planCode = requestedPlan === "pro" || requestedPlan === "elite" ? requestedPlan : null;
 
   // Query para obter informações do plano
-  const { data: planInfo } = (trpc as any).payment.getPlanInfo.useQuery(
+  const { data: planInfo } = trpc.payment.getPlanInfo.useQuery(
     { planCode: planCode || "pro" },
-    { enabled: !!planCode }
+    { enabled: Boolean(planCode) }
   );
 
   // Mutation para criar preferência de pagamento
-  const createPreferenceMutation = (trpc as any).payment.createUpgradePreference.useMutation();
+  const { mutateAsync: createPreference } = trpc.payment.createUpgradePreference.useMutation();
+  const planFeatures = Array.isArray(planInfo?.features)
+    ? planInfo.features.filter((feature): feature is string => typeof feature === "string")
+    : [];
 
   useEffect(() => {
-    if (!user) {
+    if (authLoading) return;
+
+    if (!user || !planCode) {
       setLocation("/");
       return;
     }
 
-    if (!planCode) {
-      setLocation("/");
-      return;
-    }
-
-    // Criar preferência de pagamento
-    const createPreference = async () => {
+    let active = true;
+    const loadPreference = async () => {
       setIsLoading(true);
       setError(null);
+      setPreferenceId(null);
 
       try {
-        const result = await createPreferenceMutation.mutateAsync({
-          planCode: planCode as "pro" | "elite",
+        const result = await createPreference({
+          planCode,
           successUrl: `${window.location.origin}/checkout/success`,
           failureUrl: `${window.location.origin}/checkout/failure`,
         });
-
-        setPreferenceId(result.preferenceId);
+        if (active) setPreferenceId(result.preferenceId);
       } catch (err) {
-        setError(
-          err instanceof Error ? err.message : "Erro ao criar preferência de pagamento"
-        );
+        if (active) {
+          setError(err instanceof Error ? err.message : "Erro ao criar preferência de pagamento");
+        }
       } finally {
-        setIsLoading(false);
+        if (active) setIsLoading(false);
       }
     };
 
-    createPreference();
-  }, [user, planCode, setLocation, createPreferenceMutation]);
+    void loadPreference();
+    return () => { active = false; };
+  }, [authLoading, user?.id, planCode, setLocation, createPreference]);
 
-  if (!user) {
+  if (authLoading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  if (!user || !planCode) {
     return null;
   }
 
@@ -112,7 +122,7 @@ export default function Checkout() {
                 <div className="mb-8">
                   <h2 className="font-semibold mb-4">Benefícios do plano:</h2>
                   <ul className="space-y-2">
-                    {planInfo?.features?.map((feature: string, idx: number) => (
+                    {planFeatures.map((feature, idx) => (
                       <li key={idx} className="flex items-start gap-2 text-sm">
                         <Check className="w-4 h-4 text-primary shrink-0 mt-0.5" />
                         <span>{feature}</span>

@@ -8,6 +8,7 @@ import { appRouter } from "../routers";
 import { createContext } from "./context";
 import { serveStatic, setupVite } from "./vite";
 import MercadoPagoService from "../services/mercadoPago";
+import { ensureDefaultCatalog } from "../services/catalogSeed";
 
 function isPortAvailable(port: number): Promise<boolean> {
   return new Promise(resolve => {
@@ -66,6 +67,12 @@ async function startServer() {
     await setupVite(app, server);
   } else {
     serveStatic(app);
+  }
+
+  try {
+    await ensureDefaultCatalog();
+  } catch (error) {
+    console.error("[Catálogo] Não foi possível concluir a carga inicial:", error);
   }
 
   const preferredPort = parseInt(process.env.PORT || "3000");

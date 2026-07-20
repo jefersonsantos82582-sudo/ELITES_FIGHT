@@ -80,11 +80,14 @@ export const appRouter = router({
       const plan = await db.getPlanByCode(user.plan as "free" | "pro" | "elite");
       const recentSheets = await db.getGeneratedSheetsByUser(user.id);
       const templates = await db.getAllTemplates();
-      const availableTemplates = templates.filter(t => {
-        if (user.plan === "elite") return true;
-        if (user.plan === "pro") return t.plan === "free" || t.plan === "pro";
-        return t.plan === "free";
-      });
+      const planOrder = { free: 0, pro: 1, elite: 2 } as const;
+      const availableTemplates = templates
+        .filter((template) => planOrder[user.plan as "free" | "pro" | "elite"] >= planOrder[template.plan as "free" | "pro" | "elite"])
+        .slice(0, plan?.maxTemplates ?? 0);
+      const startOfMonth = new Date();
+      startOfMonth.setDate(1);
+      startOfMonth.setHours(0, 0, 0, 0);
+      const sheetsGeneratedThisMonth = await db.countGeneratedSheetsSince(user.id, startOfMonth);
 
       return {
         userName: user.name || user.email || "Usuário",
@@ -92,11 +95,12 @@ export const appRouter = router({
         planName: plan?.name || user.plan.toUpperCase(),
         templatesUnlocked: availableTemplates.length,
         totalTemplates: templates.length,
-        themesUnlocked: plan?.maxThemes || 5,
-        aiUsesLeft: user.aiUsesLeft || 0,
-        maxAiUses: plan?.maxAiUses || 0,
-        sheetsGenerated: user.sheetsGenerated || 0,
-        unlimitedSheets: plan?.unlimitedSheets || false,
+        themesUnlocked: plan?.maxThemes ?? 0,
+        aiUsesLeft: user.aiUsesLeft ?? 0,
+        maxAiUses: plan?.maxAiUses ?? 0,
+        sheetsGenerated: recentSheets.length,
+        sheetsGeneratedThisMonth,
+        unlimitedSheets: plan?.unlimitedSheets ?? false,
         recentSheets: recentSheets.slice(0, 10),
         totalSheets: recentSheets.length,
       };
@@ -112,9 +116,9 @@ export const appRouter = router({
     generate: protectedProcedure.input(z.object({
       templateId: z.number(),
       customName: z.string().min(1).max(200),
-      headerColor: z.string().optional(),
-      accentColor: z.string().optional(),
-      extraInfo: z.string().optional(),
+      headerColor: z.string().regex(/^#[0-9A-Fa-f]{6}$/, "Cor de cabeçalho inválida").optional(),
+      accentColor: z.string().regex(/^#[0-9A-Fa-f]{6}$/, "Cor de destaque inválida").optional(),
+      extraInfo: z.string().max(2_000, "Informações extras muito longas").optional(),
     })).mutation(async ({ ctx, input }) => {
       const user = ctx.user;
 
@@ -128,18 +132,35 @@ export const appRouter = router({
         throw new Error("Modelo não encontrado ou indisponível.");
       }
 
-      // Check plan access
+      // Check plan access and the configured catalog allowance.
       const userPlan = user.plan as "free" | "pro" | "elite";
       const templatePlan = template.plan as "free" | "pro" | "elite";
-      const planOrder = { free: 0, pro: 1, elite: 2 };
+      const planOrder = { free: 0, pro: 1, elite: 2 } as const;
       if (planOrder[userPlan] < planOrder[templatePlan]) {
         throw new Error("Seu plano não permite acesso a este modelo. Faça upgrade!");
       }
 
-      // Check monthly limit for free plan
       const plan = await db.getPlanByCode(userPlan);
-      if (plan && !plan.unlimitedSheets && user.sheetsGenerated >= 1) {
-        throw new Error("Você atingiu o limite de planilhas do plano FREE. Faça upgrade para gerar mais!");
+      if (!plan) {
+        throw new Error("Não foi possível localizar as permissões do seu plano.");
+      }
+
+      const allowedTemplates = (await db.getAllTemplates())
+        .filter((item) => planOrder[userPlan] >= planOrder[item.plan as "free" | "pro" | "elite"])
+        .slice(0, plan.maxTemplates);
+      if (!allowedTemplates.some((item) => item.id === template.id)) {
+        throw new Error("Este modelo não está incluído no limite atual do seu plano. Faça upgrade para liberá-lo.");
+      }
+
+      // Free-plan allowance resets at the start of each calendar month.
+      if (!plan.unlimitedSheets) {
+        const startOfMonth = new Date();
+        startOfMonth.setDate(1);
+        startOfMonth.setHours(0, 0, 0, 0);
+        const generatedThisMonth = await db.countGeneratedSheetsSince(user.id, startOfMonth);
+        if (generatedThisMonth >= 1) {
+          throw new Error("Você atingiu o limite mensal de planilhas do seu plano. Faça upgrade para gerar mais!");
+        }
       }
 
       // Generate the spreadsheet

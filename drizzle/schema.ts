@@ -130,3 +130,11 @@ export const announcements = pgTable("announcements", {
   createdBy: integer("createdBy"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });
+
+export type User = typeof users.$inferSelect;
+export type InsertUser = typeof users.$inferInsert;
+export type Category = typeof categories.$inferSelect;
+export type Template = typeof templates.$inferSelect;
+export type GeneratedSheet = typeof generatedSheets.$inferSelect;
+export type Plan = typeof plans.$inferSelect;
+export type SiteSetting = typeof siteSettings.$inferSelect;

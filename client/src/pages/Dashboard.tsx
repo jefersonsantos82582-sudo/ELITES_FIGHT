@@ -1,7 +1,7 @@
 import { Link, useLocation } from "wouter";
 import {
   LayoutDashboard, FileSpreadsheet, Library, Settings, Crown,
-  Download, TrendingUp, Sparkles, Clock, FileDown, Plus,
+  Download, TrendingUp, Sparkles, Clock, FileDown, Plus, AlertCircle, RefreshCw,
 } from "lucide-react";
 import DashboardLayout from "@/components/DashboardLayout";
 import { Card } from "@/components/ui/card";
@@ -10,19 +10,16 @@ import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { trpc } from "@/lib/trpc";
 import { useAuth } from "@/_core/hooks/useAuth";
-import { useLocation } from "wouter";
 import { useEffect, useState } from "react";
 
-const menuItems = [
-  { icon: LayoutDashboard, label: "Dashboard", path: "/dashboard" },
-  { icon: Library, label: "Modelos", path: "/dashboard/modelos" },
-  { icon: FileSpreadsheet, label: "Gerador", path: "/dashboard/gerador" },
-  { icon: Settings, label: "Configurações", path: "/dashboard/config" },
-];
-
 export default function Dashboard() {
-  const { user } = useAuth();
-  const { data: overview, isLoading } = trpc.dashboard.overview.useQuery();
+  const { user, loading: authLoading } = useAuth();
+  const overviewQuery = trpc.dashboard.overview.useQuery(undefined, {
+    enabled: !authLoading && Boolean(user),
+    retry: 1,
+    refetchOnWindowFocus: false,
+  });
+  const { data: overview, isLoading, isError, error, refetch } = overviewQuery;
   const [location] = useLocation();
   const [paymentStatus, setPaymentStatus] = useState<'success' | 'failure' | null>(null);
 
@@ -36,19 +33,37 @@ export default function Dashboard() {
     }
   }, []);
 
-  if (isLoading) {
+  if (authLoading || isLoading) {
     return (
       <DashboardLayout>
-        <div className="flex items-center justify-center h-96">
-          <div className="animate-pulse text-muted-foreground">Carregando...</div>
+        <div className="flex h-96 items-center justify-center">
+          <div className="animate-pulse text-muted-foreground">Carregando seu dashboard...</div>
         </div>
       </DashboardLayout>
     );
   }
 
-  if (!overview) return null;
+  if (isError || !overview) {
+    return (
+      <DashboardLayout>
+        <div className="mx-auto flex min-h-96 max-w-xl items-center justify-center">
+          <Card className="w-full border-destructive/30 bg-card/60 p-6 text-center">
+            <AlertCircle className="mx-auto h-10 w-10 text-destructive" />
+            <h1 className="mt-4 text-xl font-semibold">Não foi possível carregar o dashboard</h1>
+            <p className="mt-2 text-sm leading-6 text-muted-foreground">
+              {error?.message || "A sessão ou os dados do dashboard não estão disponíveis neste momento."}
+            </p>
+            <Button className="mt-5" variant="outline" onClick={() => void refetch()}>
+              <RefreshCw className="mr-2 h-4 w-4" />
+              Tentar novamente
+            </Button>
+          </Card>
+        </div>
+      </DashboardLayout>
+    );
+  }
 
-  const planBadgeColor = {
+  const planBadgeColor: Record<"free" | "pro" | "elite", string> = {
     free: "bg-muted text-muted-foreground",
     pro: "bg-primary/15 text-primary",
     elite: "bg-gold-gradient text-black",
@@ -60,19 +75,19 @@ export default function Dashboard() {
         {/* Payment Status Alert */}
         {paymentStatus === 'success' && (
           <div className="p-4 bg-green-500/10 border border-green-500/30 rounded-lg">
-            <p className="text-green-700 dark:text-green-400 font-semibold">✓ Pagamento realizado com sucesso! Seu plano foi atualizado.</p>
+            <p className="font-semibold text-green-700 dark:text-green-400">Pagamento realizado com sucesso. Seu plano foi atualizado.</p>
           </div>
         )}
         {paymentStatus === 'failure' && (
           <div className="p-4 bg-red-500/10 border border-red-500/30 rounded-lg">
-            <p className="text-red-700 dark:text-red-400 font-semibold">✗ Falha no pagamento. Por favor, tente novamente.</p>
+            <p className="font-semibold text-red-700 dark:text-red-400">Falha no pagamento. Por favor, tente novamente.</p>
           </div>
         )}
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
             <h1 className="font-display text-2xl md:text-3xl font-bold">
-              Olá, {overview.userName.split(" ")[0]} 👋
+              Olá, {overview.userName.split(" ")[0]}
             </h1>
             <p className="text-muted-foreground text-sm mt-1">
               Bem-vindo de volta ao seu painel
@@ -142,25 +157,17 @@ export default function Dashboard() {
               <div>
                 <h3 className="font-semibold">Limite mensal</h3>
                 <p className="text-sm text-muted-foreground">
-                  {overview.sheetsGenerated} de 1 planilha usada este mês
+                  {overview.sheetsGeneratedThisMonth} de 1 planilha usada este mês
                 </p>
               </div>
               <Link href="/#planos">
-                <Button 
-                  variant="outline" 
-                  size="sm" 
-                  className="border-primary/30 text-primary"
-                  onClick={(e) => {
-                    // Se estivermos no dashboard, redirecionar para a home na seção de planos
-                    window.location.href = "/#planos";
-                  }}
-                >
+                <Button variant="outline" size="sm" className="border-primary/30 text-primary">
                   <Crown className="w-3.5 h-3.5 mr-1.5" />
                   Fazer upgrade
                 </Button>
               </Link>
             </div>
-            <Progress value={overview.sheetsGenerated * 100} className="h-2" />
+            <Progress value={Math.min(overview.sheetsGeneratedThisMonth * 100, 100)} className="h-2" />
           </Card>
         )}
 

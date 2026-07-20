@@ -1,7 +1,7 @@
 import { trpc } from "@/lib/trpc";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { auth, googleProvider } from "@/lib/firebase";
-import { signInWithPopup, signOut, onAuthStateChanged, User as FirebaseUser } from "firebase/auth";
+import { onIdTokenChanged, signInWithPopup, signOut, type User as FirebaseUser } from "firebase/auth";
 import { useLocation } from "wouter";
 
 type UseAuthOptions = {
@@ -11,75 +11,92 @@ type UseAuthOptions = {
 };
 
 export function useAuth(options?: UseAuthOptions) {
-  const { 
-    redirectOnUnauthenticated = false, 
+  const {
+    redirectOnUnauthenticated = false,
     redirectPath,
-    redirectToDashboardOnLogin = false 
+    redirectToDashboardOnLogin = false,
   } = options ?? {};
-  
+
   const utils = trpc.useUtils();
   const [, setLocation] = useLocation();
   const [fbUser, setFbUser] = useState<FirebaseUser | null>(null);
   const [fbLoading, setFbLoading] = useState(true);
+  const [sessionError, setSessionError] = useState<Error | null>(null);
 
   const meQuery = trpc.auth.me.useQuery(undefined, {
     retry: false,
-    refetchOnWindowFocus: true, // Aumentar a chance de pegar o estado atualizado
+    refetchOnWindowFocus: false,
     enabled: !fbLoading,
   });
 
   useEffect(() => {
-    console.log("[Auth] Monitorando estado do Firebase...");
-    const unsubscribe = onAuthStateChanged(auth, async (user) => {
-      console.log("[Auth] Firebase state changed:", user?.email || "No user");
+    const unsubscribe = onIdTokenChanged(auth, async (user) => {
       setFbUser(user);
-      
-      if (user) {
-        try {
-          const token = await user.getIdToken(true); // Forçar refresh do token
-          console.log("[Auth] Token obtido com sucesso");
+      setSessionError(null);
+
+      try {
+        if (user) {
+          const token = await user.getIdToken(true);
           sessionStorage.setItem("firebase-token", token);
-          // Invalidação forçada para garantir que o backend tente autenticar com o novo token
           await utils.auth.me.invalidate();
-        } catch (err) {
-          console.error("[Auth] Erro ao obter token:", err);
+        } else {
+          sessionStorage.removeItem("firebase-token");
+          utils.auth.me.setData(undefined, null);
+          utils.dashboard.overview.reset();
         }
-      } else {
-        sessionStorage.removeItem("firebase-token");
-        utils.auth.me.setData(undefined, null);
+      } catch (error) {
+        const normalizedError = error instanceof Error ? error : new Error("Não foi possível atualizar sua sessão.");
+        console.error("[Auth] Falha ao atualizar a sessão Firebase:", normalizedError);
+        setSessionError(normalizedError);
+      } finally {
+        setFbLoading(false);
       }
-      setFbLoading(false);
     });
+
     return () => unsubscribe();
   }, [utils]);
 
   useEffect(() => {
+    if (!fbUser || meQuery.isLoading || meQuery.isFetching) return;
+
+    if (meQuery.error) {
+      setSessionError(meQuery.error instanceof Error ? meQuery.error : new Error("Não foi possível validar sua sessão."));
+      return;
+    }
+
+    if (!meQuery.data) {
+      setSessionError(new Error("O login foi concluído, mas a sessão não foi reconhecida pelo servidor. Tente novamente."));
+    }
+  }, [fbUser, meQuery.data, meQuery.error, meQuery.isFetching, meQuery.isLoading]);
+
+  useEffect(() => {
     if (redirectToDashboardOnLogin && meQuery.data && !meQuery.isLoading) {
-      console.log("[Auth] Redirecionando para dashboard após login detectado");
       setLocation("/dashboard");
     }
   }, [meQuery.data, meQuery.isLoading, redirectToDashboardOnLogin, setLocation]);
 
-  const login = useCallback(async (customRedirect?: string) => {
-    console.log("[Auth] Iniciando login via popup...");
+  const login = useCallback(async (customRedirect = "/dashboard") => {
+    setSessionError(null);
+
     try {
       const result = await signInWithPopup(auth, googleProvider);
-      console.log("[Auth] Login Firebase bem-sucedido:", result.user.email);
-      
       const token = await result.user.getIdToken(true);
       sessionStorage.setItem("firebase-token", token);
-      
-      // Forçar atualização do tRPC antes do redirecionamento
-      await utils.auth.me.refetch();
-      
-      if (customRedirect) {
-        setLocation(customRedirect);
-      } else {
-        setLocation("/dashboard");
+
+      await utils.auth.me.invalidate();
+      const session = await utils.auth.me.fetch();
+
+      if (!session) {
+        throw new Error("Sua conta foi autenticada no Google, mas o servidor não conseguiu criar a sessão.");
       }
+
+      await utils.dashboard.overview.invalidate();
+      setLocation(customRedirect);
     } catch (error) {
-      console.error("[Auth] Erro ao fazer login com Google:", error);
-      throw error;
+      const normalizedError = error instanceof Error ? error : new Error("Não foi possível entrar com Google.");
+      console.error("[Auth] Falha no login:", normalizedError);
+      setSessionError(normalizedError);
+      throw normalizedError;
     }
   }, [setLocation, utils]);
 
@@ -88,48 +105,35 @@ export function useAuth(options?: UseAuthOptions) {
       await signOut(auth);
       sessionStorage.removeItem("firebase-token");
       utils.auth.me.setData(undefined, null);
+      utils.dashboard.overview.reset();
       await utils.auth.me.invalidate();
       setLocation("/");
     } catch (error) {
-      console.error("Erro ao fazer logout:", error);
-      throw error;
+      const normalizedError = error instanceof Error ? error : new Error("Não foi possível sair da conta.");
+      setSessionError(normalizedError);
+      throw normalizedError;
     }
   }, [utils, setLocation]);
 
-  const state = useMemo(() => {
-    return {
-      user: meQuery.data ?? null,
-      loading: fbLoading || meQuery.isLoading,
-      error: meQuery.error ?? null,
-      isAuthenticated: Boolean(meQuery.data),
-    };
-  }, [meQuery.data, meQuery.error, meQuery.isLoading, fbLoading]);
+  const loading = fbLoading || (!fbLoading && meQuery.isLoading);
+  const error = sessionError ?? (meQuery.error instanceof Error ? meQuery.error : null);
+  const user = meQuery.data ?? null;
 
   useEffect(() => {
-    if (!redirectOnUnauthenticated) return;
-    if (fbLoading || meQuery.isLoading) return;
-    if (state.user) return;
-    
-    console.log("[Auth] Usuário não autenticado, verificando redirecionamento...");
-    if (redirectPath) {
-      if (window.location.pathname !== redirectPath) {
-        setLocation(redirectPath);
-      }
-    }
-    // Removido o login automático para evitar loops na tela de bloqueio
-  }, [
-    redirectOnUnauthenticated,
-    redirectPath,
-    fbLoading,
-    meQuery.isLoading,
-    state.user,
-    setLocation
-  ]);
+    if (!redirectOnUnauthenticated || fbLoading || meQuery.isLoading || user) return;
 
-  return {
-    ...state,
+    if (redirectPath && window.location.pathname !== redirectPath) {
+      setLocation(redirectPath);
+    }
+  }, [redirectOnUnauthenticated, redirectPath, fbLoading, meQuery.isLoading, setLocation, user]);
+
+  return useMemo(() => ({
+    user,
+    loading,
+    error,
+    isAuthenticated: Boolean(user),
     refresh: () => meQuery.refetch(),
     login,
     logout,
-  };
+  }), [error, loading, login, logout, meQuery, user]);
 }

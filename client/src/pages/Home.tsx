@@ -1,5 +1,4 @@
 import { useState, useEffect } from "react";
-import { Link } from "wouter";
 import { 
   CheckCircle2, Crown, FileSpreadsheet, Zap, 
   Layout, Palette, Download, ArrowRight, ShieldCheck,
@@ -18,15 +17,19 @@ export default function Home() {
   const { data: plans } = trpc.plans.list.useQuery();
 
   const handlePlanAction = async (planCode: string) => {
-    if (!user) {
-      await login("/dashboard");
-      return;
-    }
+    try {
+      if (!user) {
+        await login("/dashboard");
+        return;
+      }
 
-    if (planCode === "free") {
-      window.location.href = "/dashboard";
-    } else {
-      window.location.href = `/checkout?plan=${planCode}`;
+      if (planCode === "free") {
+        window.location.href = "/dashboard";
+      } else {
+        window.location.href = `/checkout?plan=${planCode}`;
+      }
+    } catch (error) {
+      console.error("[Home] Não foi possível iniciar o fluxo do plano:", error);
     }
   };
 
@@ -185,7 +188,7 @@ export default function Home() {
                       {plan.name}
                     </h3>
                     <div className="flex items-baseline gap-1">
-                      <span className="text-4xl font-bold">R$ {plan.price}</span>
+                      <span className="text-4xl font-bold">R$ {plan.priceMonthly ?? "0"}</span>
                       <span className="text-muted-foreground">/mês</span>
                     </div>
                     <p className="text-sm text-muted-foreground mt-4">
@@ -206,7 +209,7 @@ export default function Home() {
                     className={`w-full ${
                       isPro || isElite 
                         ? "bg-gold-gradient text-black font-semibold hover:opacity-90" 
-                        : "variant-outline border-border/50"
+                        : "border-border/50"
                     }`}
                     variant={plan.code === "free" ? "outline" : "default"}
                     onClick={() => handlePlanAction(plan.code)}

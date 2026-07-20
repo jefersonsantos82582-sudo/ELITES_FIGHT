@@ -17,7 +17,12 @@ import { useAuth } from "@/_core/hooks/useAuth";
 import { toast } from "sonner";
 
 export default function Generator() {
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
+  const { data: overview } = trpc.dashboard.overview.useQuery(undefined, {
+    enabled: !authLoading && Boolean(user),
+    retry: 1,
+    refetchOnWindowFocus: false,
+  });
   const [location] = useLocation();
   const params = new URLSearchParams(location.split("?")[1] || "");
   const presetTemplateId = params.get("templateId");
@@ -33,8 +38,8 @@ export default function Generator() {
   const [extraInfo, setExtraInfo] = useState("");
   const [generated, setGenerated] = useState<{ fileUrl: string; fileName: string } | null>(null);
 
-  const userPlan = user?.plan as "free" | "pro" | "elite" || "free";
-  const planOrder = { free: 0, pro: 1, elite: 2 };
+  const userPlan = (user?.plan as "free" | "pro" | "elite") || "free";
+  const planOrder = { free: 0, pro: 1, elite: 2 } as const;
 
   const generateMutation = trpc.generator.generate.useMutation({
     onSuccess: (data) => {
@@ -63,8 +68,15 @@ export default function Generator() {
     }
   }, [selectedTemplate]);
 
+  const allowedTemplateIds = useMemo(() => {
+    const candidates = (templates || [])
+      .filter((template) => planOrder[userPlan] >= planOrder[template.plan as "free" | "pro" | "elite"])
+      .slice(0, overview?.templatesUnlocked ?? Number.MAX_SAFE_INTEGER);
+    return new Set(candidates.map((template) => template.id));
+  }, [overview?.templatesUnlocked, templates, userPlan]);
+
   const hasAccess = selectedTemplate
-    ? planOrder[userPlan] >= planOrder[selectedTemplate.plan as "free" | "pro" | "elite"]
+    ? planOrder[userPlan] >= planOrder[selectedTemplate.plan as "free" | "pro" | "elite"] && allowedTemplateIds.has(selectedTemplate.id)
     : true;
 
   const handleGenerate = () => {
@@ -94,6 +106,14 @@ export default function Generator() {
     { name: "Roxo Moderno", header: "#7C3AED", accent: "#4C1D95" },
     { name: "Cinza Elegante", header: "#4B5563", accent: "#1F2937" },
   ];
+  const fallbackThemeLimit = { free: 3, pro: 5, elite: colorPresets.length } as const;
+  const themeLimit = Math.min(overview?.themesUnlocked ?? fallbackThemeLimit[userPlan], colorPresets.length);
+
+  const handleCategoryChange = (categoryId: string) => {
+    setSelectedCategory(categoryId);
+    setSelectedTemplateId("");
+    setGenerated(null);
+  };
 
   return (
     <DashboardLayout>
@@ -117,7 +137,7 @@ export default function Generator() {
                 <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center text-sm font-bold text-primary">1</div>
                 <h3 className="font-semibold">Escolha a categoria</h3>
               </div>
-              <Select value={selectedCategory} onValueChange={setSelectedCategory}>
+              <Select value={selectedCategory} onValueChange={handleCategoryChange}>
                 <SelectTrigger>
                   <SelectValue placeholder="Selecione uma categoria" />
                 </SelectTrigger>
@@ -141,9 +161,9 @@ export default function Generator() {
                 </p>
               ) : (
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  {categoryTemplates.map(tpl => {
-                    const tplPlan = tpl.plan as "free" | "pro" | "elite";
-                    const canAccess = planOrder[userPlan] >= planOrder[tplPlan];
+                    {categoryTemplates.map(tpl => {
+                      const tplPlan = tpl.plan as "free" | "pro" | "elite";
+                      const canAccess = planOrder[userPlan] >= planOrder[tplPlan] && allowedTemplateIds.has(tpl.id);
                     const isSelected = String(tpl.id) === selectedTemplateId;
                     return (
                       <button
@@ -208,23 +228,32 @@ export default function Generator() {
                 <div>
                   <Label>Tema de cores</Label>
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mt-1.5">
-                    {colorPresets.map(preset => (
-                      <button
-                        key={preset.name}
-                        onClick={() => { setHeaderColor(preset.header); setAccentColor(preset.accent); }}
-                        className={`p-3 rounded-lg border transition-all text-left ${
-                          headerColor === preset.header
-                            ? "border-primary bg-primary/5"
-                            : "border-border/30 hover:border-primary/30"
-                        }`}
-                      >
-                        <div className="flex items-center gap-2 mb-1">
-                          <div className="w-5 h-5 rounded" style={{ backgroundColor: preset.header }} />
-                          <div className="w-5 h-5 rounded" style={{ backgroundColor: preset.accent }} />
-                        </div>
-                        <span className="text-xs text-muted-foreground">{preset.name}</span>
-                      </button>
-                    ))}
+                    {colorPresets.map((preset, index) => {
+                      const isLocked = index >= themeLimit;
+                      return (
+                        <button
+                          type="button"
+                          key={preset.name}
+                          disabled={isLocked}
+                          title={isLocked ? "Faça upgrade para liberar este tema" : preset.name}
+                          onClick={() => { setHeaderColor(preset.header); setAccentColor(preset.accent); }}
+                          className={`p-3 rounded-lg border transition-all text-left ${
+                            headerColor === preset.header
+                              ? "border-primary bg-primary/5"
+                              : isLocked
+                              ? "border-border/20 opacity-50 cursor-not-allowed"
+                              : "border-border/30 hover:border-primary/30"
+                          }`}
+                        >
+                          <div className="flex items-center gap-2 mb-1">
+                            <div className="w-5 h-5 rounded" style={{ backgroundColor: preset.header }} />
+                            <div className="w-5 h-5 rounded" style={{ backgroundColor: preset.accent }} />
+                          </div>
+                          <span className="text-xs text-muted-foreground">{preset.name}</span>
+                          {isLocked && <span className="block mt-1 text-[10px] text-primary">Requer upgrade</span>}
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
 
