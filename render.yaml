@@ -19,3 +19,16 @@ services:
         sync: false
       - key: ADMIN_PASSWORD
         sync: false
+
+  - type: cron
+    name: subscription-downgrade
+    runtime: node
+    plan: free
+    schedule: '0 0 0 * * *'
+    buildCommand: npm ci --legacy-peer-deps && npm run build
+    startCommand: npm run cron
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        sync: false

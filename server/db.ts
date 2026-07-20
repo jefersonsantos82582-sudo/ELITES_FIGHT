@@ -1,4 +1,4 @@
-import { and, count, desc, eq, gte, sql } from "drizzle-orm";
+import { and, count, desc, eq, gte, sql, lt } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 import {
@@ -26,11 +26,15 @@ export async function getDb() {
   if (_db || !process.env.DATABASE_URL) return _db;
 
   try {
-    client = postgres(process.env.DATABASE_URL, {
-      max: 5,
-      prepare: false,
-    });
-    _db = drizzle(client);
+    if (!client) {
+      client = postgres(process.env.DATABASE_URL, {
+        max: 5,
+        prepare: false,
+      });
+    }
+    if (!_db) {
+      _db = drizzle(client);
+    }
   } catch (error) {
     console.error("[Database] Não foi possível inicializar PostgreSQL:", error);
     client = null;
@@ -98,10 +102,24 @@ export async function getAllUsers() {
   return db.select().from(users).orderBy(desc(users.createdAt));
 }
 
-export async function updateUserPlan(userId: number, plan: "free" | "pro" | "elite") {
+export async function updateUserPlan(userId: number, plan: "free" | "pro" | "elite", planExpiresAt?: Date) {
   const db = await getDb();
   if (!db) return;
-  await db.update(users).set({ plan, updatedAt: new Date() }).where(eq(users.id, userId));
+  await db.update(users).set({ plan, updatedAt: new Date(), planExpiresAt }).where(eq(users.id, userId));
+}
+
+export async function downgradeExpiredPlans() {
+  const db = await getDb();
+  if (!db) return;
+  
+  // Update users whose plan is not 'free' and their expiration date has passed
+  const now = new Date();
+  await db.update(users).set({ plan: "free", planExpiresAt: null, updatedAt: now }).where(
+    and(eq(users.plan, "pro"), lt(users.planExpiresAt, now))
+  );
+  await db.update(users).set({ plan: "free", planExpiresAt: null, updatedAt: now }).where(
+    and(eq(users.plan, "elite"), lt(users.planExpiresAt, now))
+  );
 }
 
 export async function updateUserSuspended(userId: number, suspended: boolean) {

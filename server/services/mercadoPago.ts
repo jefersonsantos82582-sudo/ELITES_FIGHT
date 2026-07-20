@@ -158,7 +158,10 @@ class MercadoPagoService {
 
             if (!isNaN(userId) && (planCode === 'pro' || planCode === 'elite')) {
               console.log(`Atualizando plano do usuário ${userId} para ${planCode}`);
-              await db.updateUserPlan(userId, planCode);
+              // Define a data de expiração para 30 dias a partir do pagamento
+              const expiresAt = new Date();
+              expiresAt.setDate(expiresAt.getDate() + 30);
+              await db.updateUserPlan(userId, planCode, expiresAt);
               return true;
             }
           }
