@@ -1,4 +1,6 @@
 import { invokeLLM } from "../_core/llm";
+import { ENV } from "../_core/env";
+import axios from "axios";
 
 export interface AIGenerationRequest {
   modelType: "bebidas" | "produtos" | "clientes";
@@ -108,6 +110,37 @@ Retorne APENAS um JSON válido com a seguinte estrutura:
 Gere pelo menos 5 linhas de exemplo realistas com dados variados.`,
 };
 
+/**
+ * Função para chamar o Google Gemini 1.5 Flash diretamente via API do Google AI Studio
+ */
+async function callGemini(prompt: string): Promise<string> {
+  if (!ENV.geminiApiKey) {
+    throw new Error("GEMINI_API_KEY não configurada no Render.");
+  }
+
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${ENV.geminiApiKey}`;
+  
+  const response = await axios.post(url, {
+    contents: [
+      {
+        parts: [
+          { text: prompt }
+        ]
+      }
+    ],
+    generationConfig: {
+      temperature: 0.7,
+      maxOutputTokens: 2000,
+    }
+  });
+
+  const content = response.data?.candidates?.[0]?.content?.parts?.[0]?.text;
+  if (!content) {
+    throw new Error("Resposta vazia do Gemini");
+  }
+  return content;
+}
+
 export async function generateSheetWithAI(
   request: AIGenerationRequest
 ): Promise<AIGenerationResponse> {
@@ -119,19 +152,28 @@ Contexto adicional do usuário: ${request.description}
 Gere ${request.rowCount || 5} linhas de dados de exemplo.`;
 
   try {
-    const response = await invokeLLM({
-      model: "gpt-4o-mini",
-      messages: [
-        {
-          role: "user",
-          content: userMessage,
-        },
-      ],
-      temperature: 0.7,
-      max_tokens: 2000,
-    });
+    let content: string;
 
-    const content = response.choices?.[0]?.message?.content;
+    // Tenta usar Gemini se a chave estiver configurada, senão tenta usar o invokeLLM padrão (OpenAI)
+    if (ENV.geminiApiKey) {
+      console.log("[AI Generator] Usando Google Gemini...");
+      content = await callGemini(userMessage);
+    } else {
+      console.log("[AI Generator] Usando OpenAI/Manus Forge...");
+      const response = await invokeLLM({
+        model: "gpt-4o-mini",
+        messages: [
+          {
+            role: "user",
+            content: userMessage,
+          },
+        ],
+        temperature: 0.7,
+        max_tokens: 2000,
+      });
+      content = response.choices?.[0]?.message?.content as string;
+    }
+
     if (!content) {
       throw new Error("Nenhuma resposta recebida da IA");
     }
