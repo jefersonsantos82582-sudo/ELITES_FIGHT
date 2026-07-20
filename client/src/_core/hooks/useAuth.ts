@@ -24,50 +24,64 @@ export function useAuth(options?: UseAuthOptions) {
 
   const meQuery = trpc.auth.me.useQuery(undefined, {
     retry: false,
-    refetchOnWindowFocus: false,
+    refetchOnWindowFocus: true, // Aumentar a chance de pegar o estado atualizado
     enabled: !fbLoading,
   });
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
+    console.log("[Auth] Monitorando estado do Firebase...");
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      console.log("[Auth] Firebase state changed:", user?.email || "No user");
       setFbUser(user);
-      setFbLoading(false);
+      
       if (user) {
-        user.getIdToken().then((token) => {
+        try {
+          const token = await user.getIdToken(true); // Forçar refresh do token
+          console.log("[Auth] Token obtido com sucesso");
           sessionStorage.setItem("firebase-token", token);
-          utils.auth.me.invalidate();
-        });
+          // Invalidação forçada para garantir que o backend tente autenticar com o novo token
+          await utils.auth.me.invalidate();
+        } catch (err) {
+          console.error("[Auth] Erro ao obter token:", err);
+        }
       } else {
         sessionStorage.removeItem("firebase-token");
         utils.auth.me.setData(undefined, null);
       }
+      setFbLoading(false);
     });
     return () => unsubscribe();
   }, [utils]);
 
-  // Redirecionar para dashboard se o usuário acabar de logar e estivermos na home ou se solicitado
   useEffect(() => {
     if (redirectToDashboardOnLogin && meQuery.data && !meQuery.isLoading) {
+      console.log("[Auth] Redirecionando para dashboard após login detectado");
       setLocation("/dashboard");
     }
   }, [meQuery.data, meQuery.isLoading, redirectToDashboardOnLogin, setLocation]);
 
   const login = useCallback(async (customRedirect?: string) => {
+    console.log("[Auth] Iniciando login via popup...");
     try {
       const result = await signInWithPopup(auth, googleProvider);
-      if (result.user) {
-        // Forçar redirecionamento após sucesso do popup
-        if (customRedirect) {
-          setLocation(customRedirect);
-        } else {
-          setLocation("/dashboard");
-        }
+      console.log("[Auth] Login Firebase bem-sucedido:", result.user.email);
+      
+      const token = await result.user.getIdToken(true);
+      sessionStorage.setItem("firebase-token", token);
+      
+      // Forçar atualização do tRPC antes do redirecionamento
+      await utils.auth.me.refetch();
+      
+      if (customRedirect) {
+        setLocation(customRedirect);
+      } else {
+        setLocation("/dashboard");
       }
     } catch (error) {
-      console.error("Erro ao fazer login com Google:", error);
+      console.error("[Auth] Erro ao fazer login com Google:", error);
       throw error;
     }
-  }, [setLocation]);
+  }, [setLocation, utils]);
 
   const logout = useCallback(async () => {
     try {
@@ -95,22 +109,20 @@ export function useAuth(options?: UseAuthOptions) {
     if (!redirectOnUnauthenticated) return;
     if (fbLoading || meQuery.isLoading) return;
     if (state.user) return;
-    if (typeof window === "undefined") return;
     
+    console.log("[Auth] Usuário não autenticado, verificando redirecionamento...");
     if (redirectPath) {
       if (window.location.pathname !== redirectPath) {
         setLocation(redirectPath);
       }
-    } else {
-      login();
     }
+    // Removido o login automático para evitar loops na tela de bloqueio
   }, [
     redirectOnUnauthenticated,
     redirectPath,
     fbLoading,
     meQuery.isLoading,
     state.user,
-    login,
     setLocation
   ]);
 
