@@ -23,3 +23,13 @@ A documentação oficial do Render confirma que `preDeployCommand` é aceito em 
 A versão local compilada abriu corretamente a página inicial e carregou os planos vindos do PostgreSQL de teste. Ao acionar **Entrar** em `http://127.0.0.1:3001`, o Firebase retornou `auth/unauthorized-domain`. Esse resultado é esperado para um domínio local que não está na lista **Authorized domains** do projeto Firebase e não representa falha no código de redirecionamento. A validação final do login no ambiente publicado requer que `elites-fight.onrender.com` esteja autorizado no Firebase Authentication.
 
 A correção aplicada ao cliente mantém o usuário na tela de carregamento enquanto a sessão é resolvida, confirma a sessão no backend após o retorno do Firebase e apresenta falhas recuperáveis em vez de deixá-lo preso na tela de entrada.
+
+## Validação da publicação (20/07/2026)
+
+Após o envio do commit `aaf8ce8` para a branch `main`, o serviço publicado apresentou a tela de inicialização durante a troca de versão. Na sequência, os procedimentos públicos voltaram a responder com o catálogo completo: **3 planos**, **5 categorias** e **6 modelos**. Isso confirma que a camada PostgreSQL, a carga inicial idempotente e a publicação da nova versão foram executadas no ambiente Render.
+
+## Observação visual pós-publicação
+
+Após a confirmação dos endpoints, a navegação automatizada para a página inicial publicada retornou o título `ELITES_FIGHT`, porém a captura do navegador de teste apareceu em branco e não apresentou erros no console. Como os endpoints públicos responderam com o catálogo completo, a disponibilidade do backend foi confirmada; a renderização visual será verificada adicionalmente pela resposta HTML e pelos recursos estáticos publicados.
+
+A validação direta do botão **Entrar** no ambiente publicado encaminhou corretamente para a tela de autenticação Google do projeto `elites-fight.firebaseapp.com`. Não foi realizado login com conta de terceiros; a conclusão do fluxo depende de uma conta Google autorizada do usuário.
