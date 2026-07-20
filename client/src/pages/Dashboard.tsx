@@ -146,7 +146,15 @@ export default function Dashboard() {
                 </p>
               </div>
               <Link href="/#planos">
-                <Button variant="outline" size="sm" className="border-primary/30 text-primary">
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  className="border-primary/30 text-primary"
+                  onClick={(e) => {
+                    // Se estivermos no dashboard, redirecionar para a home na seção de planos
+                    window.location.href = "/#planos";
+                  }}
+                >
                   <Crown className="w-3.5 h-3.5 mr-1.5" />
                   Fazer upgrade
                 </Button>

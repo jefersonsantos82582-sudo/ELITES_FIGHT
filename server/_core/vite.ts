@@ -20,6 +20,13 @@ export async function setupVite(app: Express, server: Server) {
     appType: "custom",
   });
 
+  // Servir arquivos da pasta storage localmente em desenvolvimento
+  const storagePath = path.resolve(process.cwd(), "dist", "public", "storage");
+  if (!fs.existsSync(storagePath)) {
+    fs.mkdirSync(storagePath, { recursive: true });
+  }
+  app.use("/storage", express.static(storagePath));
+
   app.use(vite.middlewares);
   app.use("*", async (req, res, next) => {
     const url = req.originalUrl;
@@ -52,11 +59,21 @@ export function serveStatic(app: Express) {
     process.env.NODE_ENV === "development"
       ? path.resolve(import.meta.dirname, "../..", "dist", "public")
       : path.resolve(import.meta.dirname, "public");
+      
   if (!fs.existsSync(distPath)) {
     console.error(
       `Could not find the build directory: ${distPath}, make sure to build the client first`
     );
   }
+
+  // Servir arquivos da pasta storage em produção
+  const storagePath = path.resolve(distPath, "storage");
+  if (!fs.existsSync(storagePath)) {
+    try {
+      fs.mkdirSync(storagePath, { recursive: true });
+    } catch (e) {}
+  }
+  app.use("/storage", express.static(storagePath));
 
   app.use(express.static(distPath));
 
