@@ -1,5 +1,5 @@
-import { useAuth } from "@/_core/hooks/useAuth";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { LogOut } from "lucide-react";
+import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -35,6 +35,7 @@ const menuItems = [
   { icon: LayoutDashboard, label: "Dashboard", path: "/dashboard" },
   { icon: Users, label: "Modelos", path: "/dashboard/modelos" },
   { icon: Sparkles, label: "Gerador", path: "/dashboard/gerador" },
+  { icon: Sparkles, label: "Gerador IA", path: "/dashboard/ia" },
   { icon: Settings, label: "Configurações", path: "/dashboard/config" },
 ];
 
@@ -141,6 +142,7 @@ export function DashboardLayoutContent({
               <DropdownMenuTrigger asChild>
                 <button className="flex items-center gap-3 rounded-lg px-1 py-1 hover:bg-accent/50 transition-colors w-full text-left group-data-[collapsible=icon]:justify-center focus:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                   <Avatar className="h-9 w-9 border shrink-0">
+                    {user?.photoUrl && <AvatarImage src={user.photoUrl} alt={user.name || "Avatar"} />}
                     <AvatarFallback className="text-xs font-medium">
                       {user?.name?.charAt(0).toUpperCase() ?? "U"}
                     </AvatarFallback>

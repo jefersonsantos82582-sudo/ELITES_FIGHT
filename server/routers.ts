@@ -5,6 +5,7 @@ import { publicProcedure, protectedProcedure, adminProcedure, router } from "./_
 import { z } from "zod";
 import { storagePut } from "./storage";
 import { generateSpreadsheet, type ColumnDef } from "./services/sheetGenerator";
+import { generateSheetWithAI } from "./services/aiSheetGenerator";
 import * as db from "./db";
 import { paymentRouter } from "./routers/payment";
 import { adminRouter } from "./routers/admin";
@@ -90,14 +91,22 @@ export const appRouter = router({
       const sheetsGeneratedThisMonth = await db.countGeneratedSheetsSince(user.id, startOfMonth);
 
       return {
+        userId: user.id,
         userName: user.name || user.email || "Usuário",
+        userEmail: user.email || "-",
+        userPhotoUrl: user.photoUrl || null,
         plan: user.plan,
         planName: plan?.name || user.plan.toUpperCase(),
+        planDescription: plan?.description || "",
+        planExpiresAt: user.planExpiresAt || null,
+        planFeatures: (plan?.features as string[]) || [],
         templatesUnlocked: availableTemplates.length,
         totalTemplates: templates.length,
         themesUnlocked: plan?.maxThemes ?? 0,
         aiUsesLeft: user.aiUsesLeft ?? 0,
         maxAiUses: plan?.maxAiUses ?? 0,
+        customLogo: plan?.customLogo ?? false,
+        hasWatermark: plan?.hasWatermark ?? true,
         sheetsGenerated: recentSheets.length,
         sheetsGeneratedThisMonth,
         unlimitedSheets: plan?.unlimitedSheets ?? false,
@@ -113,6 +122,63 @@ export const appRouter = router({
 
   // ==================== Generator ====================
   generator: router({
+    generateWithAI: protectedProcedure.input(z.object({
+      modelType: z.enum(["bebidas", "produtos", "clientes"]),
+      description: z.string().min(1).max(500),
+      customName: z.string().min(1).max(200),
+      headerColor: z.string().regex(/^#[0-9A-Fa-f]{6}$/, "Cor de cabecalho invalida").optional(),
+      accentColor: z.string().regex(/^#[0-9A-Fa-f]{6}$/, "Cor de destaque invalida").optional(),
+    })).mutation(async ({ ctx, input }) => {
+      const user = ctx.user;
+      if (user.suspended) {
+        throw new Error("Conta suspensa. Entre em contato com o suporte.");
+      }
+      const userPlan = user.plan as "free" | "pro" | "elite";
+      const plan = await db.getPlanByCode(userPlan);
+      if (!plan) {
+        throw new Error("Nao foi possivel localizar as permissoes do seu plano.");
+      }
+      if (plan.maxAiUses === 0) {
+        throw new Error("Seu plano nao inclui acesso a geracoes com IA. Faca upgrade para o plano Pro ou Elite!");
+      }
+      if (plan.maxAiUses > 0 && user.aiUsesLeft <= 0) {
+        throw new Error("Voce atingiu o limite de geracoes com IA do seu plano. Faca upgrade ou aguarde o proximo mes!");
+      }
+      const aiResult = await generateSheetWithAI({
+        modelType: input.modelType,
+        description: input.description,
+        customName: input.customName,
+      });
+      const buffer = await generateSpreadsheet({
+        templateName: `${input.modelType.charAt(0).toUpperCase() + input.modelType.slice(1)} (IA)`,
+        customName: input.customName,
+        columns: aiResult.columns as ColumnDef[],
+        sampleRows: aiResult.sampleRows,
+        headerColor: input.headerColor || "#D4AF37",
+        accentColor: input.accentColor || "#1A1A1A",
+        hasWatermark: plan?.hasWatermark ?? true,
+      });
+      const fileName = `sheets/${ctx.user.id}/${Date.now()}_${input.customName.replace(/[^a-zA-Z0-9]/g, "_")}.xlsx`;
+      const { key, url } = await storagePut(fileName, buffer, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+      const record = await db.createGeneratedSheet({
+        userId: ctx.user.id,
+        templateId: 0,
+        templateName: `${input.modelType} (IA)`,
+        customName: input.customName,
+        fileUrl: url,
+        fileKey: key,
+      });
+      if (plan.maxAiUses > 0) {
+        await db.updateUserAIUses(ctx.user.id, user.aiUsesLeft - 1);
+      }
+      await db.incrementSheetsGenerated(ctx.user.id);
+      return {
+        id: record?.id,
+        fileUrl: url,
+        fileName: `${input.customName}.xlsx`,
+      };
+    }),
+
     generate: protectedProcedure.input(z.object({
       templateId: z.number(),
       customName: z.string().min(1).max(200),

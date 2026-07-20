@@ -4,6 +4,8 @@ import {
   Download, TrendingUp, Sparkles, Clock, FileDown, Plus, AlertCircle, RefreshCw,
 } from "lucide-react";
 import DashboardLayout from "@/components/DashboardLayout";
+import ProfileCard from "@/components/ProfileCard";
+import PlanBenefitsCard from "@/components/PlanBenefitsCard";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -83,93 +85,50 @@ export default function Dashboard() {
             <p className="font-semibold text-red-700 dark:text-red-400">Falha no pagamento. Por favor, tente novamente.</p>
           </div>
         )}
-        {/* Header */}
+
+        {/* Profile Card */}
+        <ProfileCard
+          userName={overview.userName}
+          userEmail={overview.userEmail}
+          userPhotoUrl={overview.userPhotoUrl}
+          plan={overview.plan}
+          planName={overview.planName}
+          planExpiresAt={overview.planExpiresAt}
+          planDescription={overview.planDescription}
+        />
+
+        {/* Plan Benefits Card */}
+        <PlanBenefitsCard
+          planName={overview.planName}
+          templatesUnlocked={overview.templatesUnlocked}
+          totalTemplates={overview.totalTemplates}
+          themesUnlocked={overview.themesUnlocked}
+          aiUsesLeft={overview.aiUsesLeft}
+          maxAiUses={overview.maxAiUses}
+          customLogo={overview.customLogo}
+          hasWatermark={overview.hasWatermark}
+          unlimitedSheets={overview.unlimitedSheets}
+          sheetsGeneratedThisMonth={overview.sheetsGeneratedThisMonth}
+          planFeatures={overview.planFeatures}
+        />
+
+        {/* Quick Actions Header */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
-            <h1 className="font-display text-2xl md:text-3xl font-bold">
-              Olá, {overview.userName.split(" ")[0]}
-            </h1>
+            <h2 className="font-display text-xl md:text-2xl font-bold">
+              Ações rápidas
+            </h2>
             <p className="text-muted-foreground text-sm mt-1">
-              Bem-vindo de volta ao seu painel
+              Comece a criar suas planilhas
             </p>
           </div>
-          <div className="flex items-center gap-3">
-            <Badge className={`${planBadgeColor[overview.plan]} font-semibold`}>
-              <Crown className="w-3 h-3 mr-1" />
-              {overview.planName}
-            </Badge>
-            <Link href="/dashboard/gerador">
-              <Button className="bg-gold-gradient text-black font-semibold hover:opacity-90">
-                <Plus className="w-4 h-4 mr-2" />
-                Criar Planilha
-              </Button>
-            </Link>
-          </div>
+          <Link href="/dashboard/gerador">
+            <Button className="bg-gold-gradient text-black font-semibold hover:opacity-90">
+              <Plus className="w-4 h-4 mr-2" />
+              Criar Planilha
+            </Button>
+          </Link>
         </div>
-
-        {/* Stats Cards */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          <Card className="p-5 bg-card/50 border-border/30">
-            <div className="flex items-center justify-between mb-3">
-              <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
-                <Library className="w-5 h-5 text-primary" />
-              </div>
-            </div>
-            <div className="text-2xl font-bold">{overview.templatesUnlocked}</div>
-            <div className="text-xs text-muted-foreground mt-1">Modelos liberados</div>
-          </Card>
-
-          <Card className="p-5 bg-card/50 border-border/30">
-            <div className="flex items-center justify-between mb-3">
-              <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
-                <Sparkles className="w-5 h-5 text-primary" />
-              </div>
-            </div>
-            <div className="text-2xl font-bold">{overview.themesUnlocked}</div>
-            <div className="text-xs text-muted-foreground mt-1">Temas liberados</div>
-          </Card>
-
-          <Card className="p-5 bg-card/50 border-border/30">
-            <div className="flex items-center justify-between mb-3">
-              <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
-                <TrendingUp className="w-5 h-5 text-primary" />
-              </div>
-            </div>
-            <div className="text-2xl font-bold">{overview.aiUsesLeft}</div>
-            <div className="text-xs text-muted-foreground mt-1">Usos de IA restantes</div>
-          </Card>
-
-          <Card className="p-5 bg-card/50 border-border/30">
-            <div className="flex items-center justify-between mb-3">
-              <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
-                <FileDown className="w-5 h-5 text-primary" />
-              </div>
-            </div>
-            <div className="text-2xl font-bold">{overview.sheetsGenerated}</div>
-            <div className="text-xs text-muted-foreground mt-1">Planilhas geradas</div>
-          </Card>
-        </div>
-
-        {/* Plan Progress */}
-        {!overview.unlimitedSheets && (
-          <Card className="p-6 bg-card/50 border-border/30">
-            <div className="flex items-center justify-between mb-3">
-              <div>
-                <h3 className="font-semibold">Limite mensal</h3>
-                <p className="text-sm text-muted-foreground">
-                  {overview.sheetsGeneratedThisMonth} de 1 planilha usada este mês
-                </p>
-              </div>
-              <Link href="/#planos">
-                <Button variant="outline" size="sm" className="border-primary/30 text-primary">
-                  <Crown className="w-3.5 h-3.5 mr-1.5" />
-                  Fazer upgrade
-                </Button>
-              </Link>
-            </div>
-            <Progress value={Math.min(overview.sheetsGeneratedThisMonth * 100, 100)} className="h-2" />
-          </Card>
-        )}
 
         {/* Quick Actions */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -201,6 +160,27 @@ export default function Dashboard() {
             </Card>
           </Link>
         </div>
+
+        {/* Plan Progress */}
+        {!overview.unlimitedSheets && (
+          <Card className="p-6 bg-card/50 border-border/30">
+            <div className="flex items-center justify-between mb-3">
+              <div>
+                <h3 className="font-semibold">Limite mensal</h3>
+                <p className="text-sm text-muted-foreground">
+                  {overview.sheetsGeneratedThisMonth} de 1 planilha usada este mês
+                </p>
+              </div>
+              <Link href="/#planos">
+                <Button variant="outline" size="sm" className="border-primary/30 text-primary">
+                  <Crown className="w-3.5 h-3.5 mr-1.5" />
+                  Fazer upgrade
+                </Button>
+              </Link>
+            </div>
+            <Progress value={Math.min(overview.sheetsGeneratedThisMonth * 100, 100)} className="h-2" />
+          </Card>
+        )}
 
         {/* Recent History */}
         <Card className="p-6 bg-card/50 border-border/30">

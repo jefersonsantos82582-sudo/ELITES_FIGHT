@@ -52,10 +52,11 @@ export default function Admin() {
         </div>
 
         <Tabs value={activeTab} onValueChange={setActiveTab}>
-          <TabsList className="grid w-full grid-cols-2 md:grid-cols-5">
+          <TabsList className="grid w-full grid-cols-2 md:grid-cols-6">
             <TabsTrigger value="overview">Visão Geral</TabsTrigger>
             <TabsTrigger value="templates">Modelos</TabsTrigger>
             <TabsTrigger value="categories">Categorias</TabsTrigger>
+            <TabsTrigger value="themes">Temas</TabsTrigger>
             <TabsTrigger value="users">Usuários</TabsTrigger>
             <TabsTrigger value="plans">Planos</TabsTrigger>
           </TabsList>
@@ -68,6 +69,9 @@ export default function Admin() {
           </TabsContent>
           <TabsContent value="categories" className="mt-6">
             <CategoriesTab />
+          </TabsContent>
+          <TabsContent value="themes" className="mt-6">
+            <ThemesTab />
           </TabsContent>
           <TabsContent value="users" className="mt-6">
             <UsersTab />
@@ -584,5 +588,168 @@ function PlanEditor({ plan, onSave }: { plan: any; onSave: (data: any) => void }
         </Button>
       </div>
     </Card>
+  );
+}
+
+// ==================== Themes Tab ====================
+function ThemesTab() {
+  const [themes, setThemes] = useState([
+    { id: 1, name: "Ouro Premium", header: "#D4AF37", accent: "#1A1A1A", plan: "free" },
+    { id: 2, name: "Azul Executivo", header: "#1E40AF", accent: "#1E3A8A", plan: "free" },
+    { id: 3, name: "Verde Corporativo", header: "#059669", accent: "#064E3B", plan: "free" },
+    { id: 4, name: "Vermelho Elite", header: "#DC2626", accent: "#7F1D1D", plan: "free" },
+    { id: 5, name: "Roxo Moderno", header: "#7C3AED", accent: "#4C1D95", plan: "free" },
+    { id: 6, name: "Cinza Elegante", header: "#4B5563", accent: "#1F2937", plan: "free" },
+    { id: 7, name: "Laranja Vibrante", header: "#EA580C", accent: "#7C2D12", plan: "pro" },
+    { id: 8, name: "Teal Moderno", header: "#0F766E", accent: "#134E4A", plan: "pro" },
+  ]);
+  const [newTheme, setNewTheme] = useState({ name: "", header: "#D4AF37", accent: "#1A1A1A", plan: "free" });
+  const [showForm, setShowForm] = useState(false);
+
+  const handleAddTheme = () => {
+    if (newTheme.name.trim()) {
+      setThemes([...themes, { ...newTheme, id: Math.max(...themes.map(t => t.id)) + 1 }]);
+      setNewTheme({ name: "", header: "#D4AF37", accent: "#1A1A1A", plan: "free" });
+      setShowForm(false);
+      toast.success("Tema adicionado");
+    }
+  };
+
+  const handleDeleteTheme = (id: number) => {
+    if (confirm("Excluir tema?")) {
+      setThemes(themes.filter(t => t.id !== id));
+      toast.success("Tema excluído");
+    }
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <h3 className="font-semibold">Temas de Cores ({themes.length})</h3>
+        <Button
+          size="sm"
+          className="bg-gold-gradient text-black font-semibold"
+          onClick={() => setShowForm(!showForm)}
+        >
+          <Plus className="w-4 h-4 mr-2" />
+          Novo Tema
+        </Button>
+      </div>
+
+      {showForm && (
+        <Card className="p-4 bg-card/50 border-border/30">
+          <div className="space-y-3">
+            <div>
+              <Label className="text-xs">Nome do Tema</Label>
+              <Input
+                value={newTheme.name}
+                onChange={e => setNewTheme({ ...newTheme, name: e.target.value })}
+                placeholder="Ex: Azul Claro"
+                className="mt-1 h-8 text-sm"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label className="text-xs">Cor do Cabeçalho</Label>
+                <div className="flex items-center gap-2 mt-1">
+                  <input
+                    type="color"
+                    value={newTheme.header}
+                    onChange={e => setNewTheme({ ...newTheme, header: e.target.value })}
+                    className="w-8 h-8 rounded border border-border/30 cursor-pointer"
+                  />
+                  <Input
+                    value={newTheme.header}
+                    onChange={e => setNewTheme({ ...newTheme, header: e.target.value })}
+                    className="flex-1 h-8 text-sm"
+                  />
+                </div>
+              </div>
+              <div>
+                <Label className="text-xs">Cor de Destaque</Label>
+                <div className="flex items-center gap-2 mt-1">
+                  <input
+                    type="color"
+                    value={newTheme.accent}
+                    onChange={e => setNewTheme({ ...newTheme, accent: e.target.value })}
+                    className="w-8 h-8 rounded border border-border/30 cursor-pointer"
+                  />
+                  <Input
+                    value={newTheme.accent}
+                    onChange={e => setNewTheme({ ...newTheme, accent: e.target.value })}
+                    className="flex-1 h-8 text-sm"
+                  />
+                </div>
+              </div>
+            </div>
+            <div>
+              <Label className="text-xs">Plano Mínimo</Label>
+              <Select value={newTheme.plan} onValueChange={v => setNewTheme({ ...newTheme, plan: v })}>
+                <SelectTrigger className="mt-1 h-8 text-sm">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="free">FREE</SelectItem>
+                  <SelectItem value="pro">PRO</SelectItem>
+                  <SelectItem value="elite">ELITE</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex gap-2">
+              <Button
+                size="sm"
+                className="flex-1 bg-gold-gradient text-black font-semibold"
+                onClick={handleAddTheme}
+              >
+                Adicionar
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                className="flex-1"
+                onClick={() => setShowForm(false)}
+              >
+                Cancelar
+              </Button>
+            </div>
+          </div>
+        </Card>
+      )}
+
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        {themes.map(theme => (
+          <Card key={theme.id} className="p-4 bg-card/50 border-border/30">
+            <div className="flex items-start justify-between mb-3">
+              <div>
+                <p className="font-semibold text-sm">{theme.name}</p>
+                <Badge className="text-xs mt-1" variant="secondary">
+                  {theme.plan.toUpperCase()}
+                </Badge>
+              </div>
+              <Button
+                size="sm"
+                variant="ghost"
+                className="text-destructive"
+                onClick={() => handleDeleteTheme(theme.id)}
+              >
+                <Trash2 className="w-4 h-4" />
+              </Button>
+            </div>
+            <div className="flex items-center gap-3">
+              <div className="flex-1 space-y-2">
+                <div className="flex items-center gap-2">
+                  <div className="w-6 h-6 rounded" style={{ backgroundColor: theme.header }} />
+                  <span className="text-xs text-muted-foreground">{theme.header}</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="w-6 h-6 rounded" style={{ backgroundColor: theme.accent }} />
+                  <span className="text-xs text-muted-foreground">{theme.accent}</span>
+                </div>
+              </div>
+            </div>
+          </Card>
+        ))}
+      </div>
+    </div>
   );
 }

@@ -96,6 +96,7 @@ class SDKServer {
       uid: payload.sub,
       name: typeof payload.name === "string" ? payload.name : undefined,
       email: typeof payload.email === "string" ? payload.email : undefined,
+      picture: typeof payload.picture === "string" ? payload.picture : undefined,
     };
   }
 
@@ -118,7 +119,7 @@ class SDKServer {
 
     try {
       const decodedToken = await this.verifyFirebaseToken(idToken);
-      const { uid, name, email } = decodedToken;
+      const { uid, name, email, picture } = decodedToken;
       const signedInAt = new Date();
 
       let user = await db.getUserByOpenId(uid);
@@ -127,6 +128,7 @@ class SDKServer {
           openId: uid,
           name: name || email || "Usuário Google",
           email: email || null,
+          photoUrl: picture || null,
           loginMethod: "google",
           lastSignedIn: signedInAt,
         });
@@ -134,6 +136,9 @@ class SDKServer {
       } else {
         await db.upsertUser({
           openId: user.openId,
+          name: name || user.name,
+          email: email || user.email,
+          photoUrl: picture || user.photoUrl,
           lastSignedIn: signedInAt,
         });
       }

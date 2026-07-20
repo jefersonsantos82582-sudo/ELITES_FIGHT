@@ -8,6 +8,7 @@ import Home from "./pages/Home";
 import Dashboard from "./pages/Dashboard";
 import Templates from "./pages/Templates";
 import Generator from "./pages/Generator";
+import AIGenerator from "./pages/AIGenerator";
 import Settings from "./pages/Settings";
 import Admin from "./pages/Admin";
 import Checkout from "./pages/Checkout";
@@ -21,6 +22,7 @@ function Router() {
       <Route path="/dashboard" component={Dashboard} />
       <Route path="/dashboard/modelos" component={Templates} />
       <Route path="/dashboard/gerador" component={Generator} />
+      <Route path="/dashboard/ia" component={AIGenerator} />
       <Route path="/dashboard/config" component={Settings} />
       <Route path="/checkout" component={Checkout} />
       <Route path="/checkout/success" component={CheckoutSuccess} />
