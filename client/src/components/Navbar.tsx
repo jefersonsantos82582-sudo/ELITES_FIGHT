@@ -26,6 +26,14 @@ export default function Navbar() {
     { label: "Planos", href: "/#planos" },
   ];
 
+  const handleLogin = async () => {
+    try {
+      await login("/dashboard");
+    } catch (err) {
+      console.error("Erro no login:", err);
+    }
+  };
+
   return (
     <nav
       className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${
@@ -77,12 +85,12 @@ export default function Navbar() {
               </>
             ) : (
               <>
-                <Button variant="ghost" size="sm" onClick={() => login()}>
+                <Button variant="ghost" size="sm" onClick={handleLogin}>
                   Entrar
                 </Button>
                 <Button
                   size="sm"
-                  onClick={() => login()}
+                  onClick={handleLogin}
                   className="bg-gold-gradient text-black font-semibold hover:opacity-90"
                 >
                   Criar gratuitamente
@@ -133,12 +141,12 @@ export default function Navbar() {
                   </>
                 ) : (
                   <>
-                    <Button variant="outline" onClick={() => { login(); setMobileOpen(false); }}>
+                    <Button variant="outline" onClick={() => { handleLogin(); setMobileOpen(false); }}>
                       Entrar
                     </Button>
                     <Button
                       className="bg-gold-gradient text-black font-semibold"
-                      onClick={() => { login(); setMobileOpen(false); }}
+                      onClick={() => { handleLogin(); setMobileOpen(false); }}
                     >
                       Criar gratuitamente
                     </Button>

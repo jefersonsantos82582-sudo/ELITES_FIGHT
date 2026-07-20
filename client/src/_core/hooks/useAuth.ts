@@ -2,15 +2,23 @@ import { trpc } from "@/lib/trpc";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { auth, googleProvider } from "@/lib/firebase";
 import { signInWithPopup, signOut, onAuthStateChanged, User as FirebaseUser } from "firebase/auth";
+import { useLocation } from "wouter";
 
 type UseAuthOptions = {
   redirectOnUnauthenticated?: boolean;
   redirectPath?: string;
+  redirectToDashboardOnLogin?: boolean;
 };
 
 export function useAuth(options?: UseAuthOptions) {
-  const { redirectOnUnauthenticated = false, redirectPath } = options ?? {};
+  const { 
+    redirectOnUnauthenticated = false, 
+    redirectPath,
+    redirectToDashboardOnLogin = false 
+  } = options ?? {};
+  
   const utils = trpc.useUtils();
+  const [, setLocation] = useLocation();
   const [fbUser, setFbUser] = useState<FirebaseUser | null>(null);
   const [fbLoading, setFbLoading] = useState(true);
 
@@ -25,7 +33,6 @@ export function useAuth(options?: UseAuthOptions) {
       setFbUser(user);
       setFbLoading(false);
       if (user) {
-        // Quando o usuário loga no Firebase, sincronizamos com o backend
         user.getIdToken().then((token) => {
           sessionStorage.setItem("firebase-token", token);
           utils.auth.me.invalidate();
@@ -38,14 +45,29 @@ export function useAuth(options?: UseAuthOptions) {
     return () => unsubscribe();
   }, [utils]);
 
-  const login = useCallback(async () => {
+  // Redirecionar para dashboard se o usuário acabar de logar e estivermos na home ou se solicitado
+  useEffect(() => {
+    if (redirectToDashboardOnLogin && meQuery.data && !meQuery.isLoading) {
+      setLocation("/dashboard");
+    }
+  }, [meQuery.data, meQuery.isLoading, redirectToDashboardOnLogin, setLocation]);
+
+  const login = useCallback(async (customRedirect?: string) => {
     try {
-      await signInWithPopup(auth, googleProvider);
+      const result = await signInWithPopup(auth, googleProvider);
+      if (result.user) {
+        // Forçar redirecionamento após sucesso do popup
+        if (customRedirect) {
+          setLocation(customRedirect);
+        } else {
+          setLocation("/dashboard");
+        }
+      }
     } catch (error) {
       console.error("Erro ao fazer login com Google:", error);
       throw error;
     }
-  }, []);
+  }, [setLocation]);
 
   const logout = useCallback(async () => {
     try {
@@ -53,11 +75,12 @@ export function useAuth(options?: UseAuthOptions) {
       sessionStorage.removeItem("firebase-token");
       utils.auth.me.setData(undefined, null);
       await utils.auth.me.invalidate();
+      setLocation("/");
     } catch (error) {
       console.error("Erro ao fazer logout:", error);
       throw error;
     }
-  }, [utils]);
+  }, [utils, setLocation]);
 
   const state = useMemo(() => {
     return {
@@ -73,10 +96,13 @@ export function useAuth(options?: UseAuthOptions) {
     if (fbLoading || meQuery.isLoading) return;
     if (state.user) return;
     if (typeof window === "undefined") return;
-    if (redirectPath && window.location.pathname === redirectPath) return;
-
+    
     if (redirectPath) {
-      window.location.href = redirectPath;
+      if (window.location.pathname !== redirectPath) {
+        setLocation(redirectPath);
+      }
+    } else {
+      login();
     }
   }, [
     redirectOnUnauthenticated,
@@ -85,6 +111,7 @@ export function useAuth(options?: UseAuthOptions) {
     meQuery.isLoading,
     state.user,
     login,
+    setLocation
   ]);
 
   return {
