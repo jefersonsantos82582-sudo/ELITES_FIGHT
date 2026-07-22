@@ -9,6 +9,7 @@ import { createContext } from "./context";
 import { serveStatic, setupVite } from "./vite";
 import MercadoPagoService from "../services/mercadoPago";
 import { ensureDefaultCatalog } from "../services/catalogSeed";
+import { createAuthHandler } from "./authHandler";
 
 function isPortAvailable(port: number): Promise<boolean> {
   return new Promise(resolve => {
@@ -36,6 +37,9 @@ async function startServer() {
   app.use(express.json({ limit: "50mb" }));
   app.use(express.urlencoded({ limit: "50mb", extended: true }));
   registerStorageProxy(app);
+  
+  // Auth handler - OAuth Google direto (sem popup do Firebase)
+  app.use("/api", createAuthHandler());
   
   // Webhook dedicado para o Mercado Pago (mais confiável que via tRPC)
   app.post("/api/webhooks/mercadopago", async (req, res) => {

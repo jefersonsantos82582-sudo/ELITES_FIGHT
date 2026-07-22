@@ -1,6 +1,6 @@
 import { trpc } from "@/lib/trpc";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { auth, googleProvider } from "@/lib/firebase";
+import { auth as firebaseAuth, GOOGLE_REDIRECT_URI } from "@/lib/firebase";
 import {
   onAuthStateChanged,
   signInWithPopup,
@@ -19,6 +19,24 @@ type UseAuthOptions = {
   redirectToDashboardOnLogin?: boolean;
 };
 
+/**
+ * Verificar se o Google Client Secret está configurado no servidor.
+ * Se estiver, usamos o fluxo de redirect direto.
+ * Caso contrário, usamos o signInWithPopup do Firebase.
+ */
+async function isServerOAuthConfigured(): Promise<boolean> {
+  try {
+    const res = await fetch("/api/auth/google/check");
+    if (res.ok) {
+      const data = await res.json();
+      return data.configured === true;
+    }
+  } catch {
+    // Se o endpoint não existir, o servidor não tem o secret
+  }
+  return false;
+}
+
 export function useAuth(options?: UseAuthOptions) {
   const {
     redirectOnUnauthenticated = false,
@@ -34,6 +52,7 @@ export function useAuth(options?: UseAuthOptions) {
   const loginPromiseRef = useRef<Promise<void> | null>(null);
   const redirectResultProcessed = useRef(false);
   const pendingRedirectRef = useRef<string | null>(null);
+  const serverOAuthRef = useRef<boolean | null>(null);
 
   const meQuery = trpc.auth.me.useQuery(undefined, {
     retry: false,
@@ -41,14 +60,21 @@ export function useAuth(options?: UseAuthOptions) {
     enabled: !fbLoading,
   });
 
-  // ===== PROCESSAR REDIRECT RESULT (quando volta de signInWithRedirect) =====
+  // Verificar se o servidor OAuth está configurado
+  useEffect(() => {
+    isServerOAuthConfigured().then(configured => {
+      serverOAuthRef.current = configured;
+    });
+  }, []);
+
+  // ===== PROCESSAR REDIRECT RESULT (fallback para signInWithRedirect) =====
   useEffect(() => {
     if (redirectResultProcessed.current) return;
     redirectResultProcessed.current = true;
 
     async function processRedirectResult() {
       try {
-        const result = await getRedirectResult(auth);
+        const result = await getRedirectResult(firebaseAuth);
         if (result && result.user) {
           console.log("[Auth] Redirect result: login bem-sucedido via redirect");
           const token = await result.user.getIdToken(true);
@@ -56,13 +82,11 @@ export function useAuth(options?: UseAuthOptions) {
           await utils.auth.me.invalidate();
           const target = pendingRedirectRef.current || "/dashboard";
           pendingRedirectRef.current = null;
-          // Aguardar o backend processar o usuário
           await new Promise(resolve => setTimeout(resolve, 1500));
           setLocation(target);
         }
       } catch (error: any) {
         console.error("[Auth] Erro ao processar redirect result:", error?.code, error?.message);
-        // Não bloquear - o onAuthStateChanged pode já ter capturado o usuário
         redirectResultProcessed.current = false;
       }
     }
@@ -74,7 +98,7 @@ export function useAuth(options?: UseAuthOptions) {
   useEffect(() => {
     let mounted = true;
 
-    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+    const unsubscribe = onAuthStateChanged(firebaseAuth, async (user) => {
       if (!mounted) return;
       setFbUser(user);
 
@@ -82,7 +106,6 @@ export function useAuth(options?: UseAuthOptions) {
         if (user) {
           const token = await user.getIdToken(true);
           localStorage.setItem("firebase-token", token);
-          // Forçar re-fetch do me para sincronizar com o backend
           await utils.auth.me.invalidate();
         } else {
           localStorage.removeItem("firebase-token");
@@ -140,24 +163,29 @@ export function useAuth(options?: UseAuthOptions) {
   const login = useCallback(async (customRedirect = "/dashboard") => {
     setSessionError(null);
 
-    // Evitar múltiplos cliques simultâneos
     if (loginPromiseRef.current) {
       return loginPromiseRef.current;
     }
 
     const loginPromise = (async () => {
       try {
-        // Garantir persistência antes do login
-        await setPersistence(auth, browserLocalPersistence);
+        await setPersistence(firebaseAuth, browserLocalPersistence);
 
-        // Tentar signInWithPopup primeiro (melhor UX, funciona na maioria dos navegadores)
+        // Se o servidor OAuth está configurado, usar o fluxo de redirect direto
+        if (serverOAuthRef.current === true) {
+          console.log("[Auth] Usando fluxo OAuth direto do servidor");
+          const redirectUrl = `/api/auth/google?redirect=${encodeURIComponent(customRedirect)}`;
+          window.location.href = redirectUrl;
+          return; // A página será redirecionada
+        }
+
+        // Fallback: tentar signInWithPopup
         try {
           console.log("[Auth] Tentando signInWithPopup...");
-          const result = await signInWithPopup(auth, googleProvider);
+          const result = await signInWithPopup(firebaseAuth, new (await import("firebase/auth")).GoogleAuthProvider());
           const token = await result.user.getIdToken(true);
           localStorage.setItem("firebase-token", token);
 
-          // Invalidar cache e forçar re-fetch
           await utils.auth.me.invalidate();
           await utils.auth.me.fetch();
 
@@ -174,16 +202,17 @@ export function useAuth(options?: UseAuthOptions) {
             await new Promise(resolve => setTimeout(resolve, 500));
           }
 
-          // Redirecionar para o destino
           setLocation(customRedirect);
         } catch (popupError: any) {
-          // Se o popup foi bloqueado ou falhou, usar signInWithRedirect
           console.warn("[Auth] signInWithPopup falhou, usando signInWithRedirect:", popupError?.code);
           setSessionError(null);
           pendingRedirectRef.current = customRedirect;
-          await signInWithRedirect(auth, googleProvider);
-          // Nota: signInWithRedirect nunca retorna - a página é redirecionada
-          // O getRedirectResult no useEffect acima processa quando volta
+          const { GoogleAuthProvider } = await import("firebase/auth");
+          const provider = new GoogleAuthProvider();
+          provider.addScope('profile');
+          provider.addScope('email');
+          provider.setCustomParameters({ prompt: 'select_account' });
+          await signInWithRedirect(firebaseAuth, provider);
         }
       } catch (error: any) {
         console.error("[Auth] Falha no login:", error?.code, error?.message);
@@ -207,7 +236,7 @@ export function useAuth(options?: UseAuthOptions) {
   // ===== FUNÇÃO DE LOGOUT =====
   const logout = useCallback(async () => {
     try {
-      await signOut(auth);
+      await signOut(firebaseAuth);
       localStorage.removeItem("firebase-token");
       utils.auth.me.setData(undefined, null);
       utils.dashboard.overview.reset();

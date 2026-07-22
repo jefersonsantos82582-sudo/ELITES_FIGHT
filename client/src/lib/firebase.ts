@@ -13,9 +13,7 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 
-// Configurar persistência local ANTES de qualquer operação
-// browserLocalPersistence é a mais adequada para produção no Render
-// Isso garante que a sessão persiste ao recarregar a página
+// Configurar persistência local - essencial para produção
 setPersistence(auth, browserLocalPersistence).catch((err) => {
   console.error("Erro ao configurar persistência do Firebase:", err);
 });
@@ -23,7 +21,13 @@ setPersistence(auth, browserLocalPersistence).catch((err) => {
 export const googleProvider = new GoogleAuthProvider();
 googleProvider.addScope('profile');
 googleProvider.addScope('email');
-// Configurar hint para login - isso ajuda o Firebase a saber que é um redirect
 googleProvider.setCustomParameters({
   prompt: 'select_account',
 });
+
+// Configurações do Google OAuth para o fluxo de redirect direto
+export const GOOGLE_OAUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth";
+export const GOOGLE_CLIENT_ID = "780065023529-q9k11begnuevbo544f14mnskrvd7jll8.apps.googleusercontent.com";
+export const GOOGLE_REDIRECT_URI = "https://elites-fight.onrender.com/api/auth/google/callback";
+export const GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token";
+export const GOOGLE_USERINFO_URL = "https://www.googleapis.com/oauth2/v3/userinfo";
