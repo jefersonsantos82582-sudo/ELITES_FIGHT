@@ -15,7 +15,7 @@ import { useAuth } from "@/_core/hooks/useAuth";
 import { useEffect, useState } from "react";
 
 export default function Dashboard() {
-  const { user, loading: authLoading } = useAuth();
+  const { user, fbUser, loading: authLoading } = useAuth();
   const overviewQuery = trpc.dashboard.overview.useQuery(undefined, {
     enabled: !authLoading && Boolean(user),
     retry: 1,
