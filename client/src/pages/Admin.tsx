@@ -21,17 +21,51 @@ import { toast } from "sonner";
 export default function Admin() {
   const { user } = useAuth();
   const [activeTab, setActiveTab] = useState("overview");
+  const [adminPass, setAdminPass] = useState("");
+  const [isAuthorized, setIsAuthorized] = useState(false);
 
-  if (user?.role !== "admin") {
+  // Verificar se já tem o cookie da chave admin
+  useEffect(() => {
+    const hasKey = document.cookie.split('; ').find(row => row.startsWith('admin_key=A2M8O9J3@'));
+    if (hasKey || user?.role === "admin") {
+      setIsAuthorized(true);
+    }
+  }, [user]);
+
+  const handleAdminLogin = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (adminPass === "A2M8O9J3@") {
+      document.cookie = "admin_key=A2M8O9J3@; path=/; max-age=86400"; // 24h
+      setIsAuthorized(true);
+      toast.success("Acesso administrativo liberado!");
+    } else {
+      toast.error("Chave de acesso incorreta");
+    }
+  };
+
+  if (!isAuthorized) {
     return (
       <DashboardLayout>
         <div className="flex items-center justify-center min-h-[60vh]">
-          <Card className="p-12 text-center max-w-md">
-            <Ban className="w-12 h-12 text-destructive mx-auto mb-4" />
-            <h2 className="font-semibold text-lg mb-2">Acesso negado</h2>
-            <p className="text-sm text-muted-foreground">
-              Você não tem permissão para acessar o painel administrativo.
-            </p>
+          <Card className="p-8 text-center max-w-sm border-primary/20 bg-card/60">
+            <Settings className="w-12 h-12 text-primary mx-auto mb-4 animate-pulse" />
+            <h2 className="font-bold text-xl mb-4">Acesso Restrito</h2>
+            <form onSubmit={handleAdminLogin} className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="admin-key">Chave de Acesso</Label>
+                <Input 
+                  id="admin-key"
+                  type="password" 
+                  placeholder="Digite a chave..." 
+                  value={adminPass}
+                  onChange={(e) => setAdminPass(e.target.value)}
+                  className="text-center"
+                />
+              </div>
+              <Button type="submit" className="w-full bg-gold-gradient text-black font-bold">
+                Entrar no Painel
+              </Button>
+            </form>
           </Card>
         </div>
       </DashboardLayout>
@@ -593,7 +627,16 @@ function PlanEditor({ plan, onSave }: { plan: any; onSave: (data: any) => void }
 
 // ==================== Themes Tab ====================
 function ThemesTab() {
-  const [themes, setThemes] = useState([
+  const utils = trpc.useUtils();
+  const { data: settings } = trpc.admin.getSettings.useQuery();
+  const updateSetting = trpc.admin.updateSetting.useMutation({
+    onSuccess: () => {
+      utils.admin.getSettings.invalidate();
+      toast.success("Configuração de temas atualizada");
+    }
+  });
+
+  const currentThemes = (settings?.find(s => s.key === "themes")?.value as any[]) || [
     { id: 1, name: "Ouro Premium", header: "#D4AF37", accent: "#1A1A1A", plan: "free" },
     { id: 2, name: "Azul Executivo", header: "#1E40AF", accent: "#1E3A8A", plan: "free" },
     { id: 3, name: "Verde Corporativo", header: "#059669", accent: "#064E3B", plan: "free" },
@@ -602,23 +645,25 @@ function ThemesTab() {
     { id: 6, name: "Cinza Elegante", header: "#4B5563", accent: "#1F2937", plan: "free" },
     { id: 7, name: "Laranja Vibrante", header: "#EA580C", accent: "#7C2D12", plan: "pro" },
     { id: 8, name: "Teal Moderno", header: "#0F766E", accent: "#134E4A", plan: "pro" },
-  ]);
+  ];
+
   const [newTheme, setNewTheme] = useState({ name: "", header: "#D4AF37", accent: "#1A1A1A", plan: "free" });
   const [showForm, setShowForm] = useState(false);
 
   const handleAddTheme = () => {
     if (newTheme.name.trim()) {
-      setThemes([...themes, { ...newTheme, id: Math.max(...themes.map(t => t.id)) + 1 }]);
+      const nextId = currentThemes.length > 0 ? Math.max(...currentThemes.map((t: any) => t.id)) + 1 : 1;
+      const updatedThemes = [...currentThemes, { ...newTheme, id: nextId }];
+      updateSetting.mutate({ key: "themes", value: updatedThemes });
       setNewTheme({ name: "", header: "#D4AF37", accent: "#1A1A1A", plan: "free" });
       setShowForm(false);
-      toast.success("Tema adicionado");
     }
   };
 
   const handleDeleteTheme = (id: number) => {
     if (confirm("Excluir tema?")) {
-      setThemes(themes.filter(t => t.id !== id));
-      toast.success("Tema excluído");
+      const updatedThemes = currentThemes.filter((t: any) => t.id !== id);
+      updateSetting.mutate({ key: "themes", value: updatedThemes });
     }
   };
 
@@ -717,7 +762,7 @@ function ThemesTab() {
       )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {themes.map(theme => (
+        {currentThemes.map((theme: any) => (
           <Card key={theme.id} className="p-4 bg-card/50 border-border/30">
             <div className="flex items-start justify-between mb-3">
               <div>

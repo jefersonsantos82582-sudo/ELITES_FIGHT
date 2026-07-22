@@ -98,16 +98,20 @@ export default function Generator() {
     });
   };
 
-  const colorPresets = [
-    { name: "Ouro Premium", header: "#D4AF37", accent: "#1A1A1A" },
-    { name: "Azul Executivo", header: "#1E40AF", accent: "#1E3A8A" },
-    { name: "Verde Corporativo", header: "#059669", accent: "#064E3B" },
-    { name: "Vermelho Elite", header: "#DC2626", accent: "#7F1D1D" },
-    { name: "Roxo Moderno", header: "#7C3AED", accent: "#4C1D95" },
-    { name: "Cinza Elegante", header: "#4B5563", accent: "#1F2937" },
+  // Configurações de cores e temas vindas do admin
+  const { data: settings } = trpc.admin.getSettings.useQuery();
+  const colorPresets = (settings?.find(s => s.key === "themes")?.value as any[]) || [
+    { name: "Ouro Premium", header: "#D4AF37", accent: "#1A1A1A", plan: "free" },
+    { name: "Azul Executivo", header: "#1E40AF", accent: "#1E3A8A", plan: "free" },
+    { name: "Verde Corporativo", header: "#059669", accent: "#064E3B", plan: "free" },
+    { name: "Vermelho Elite", header: "#DC2626", accent: "#7F1D1D", plan: "free" },
+    { name: "Roxo Moderno", header: "#7C3AED", accent: "#4C1D95", plan: "free" },
+    { name: "Cinza Elegante", header: "#4B5563", accent: "#1F2937", plan: "free" },
+    { name: "Laranja Vibrante", header: "#EA580C", accent: "#7C2D12", plan: "pro" },
+    { name: "Teal Moderno", header: "#0F766E", accent: "#134E4A", plan: "pro" },
   ];
-  const fallbackThemeLimit = { free: 3, pro: 5, elite: colorPresets.length } as const;
-  const themeLimit = Math.min(overview?.themesUnlocked ?? fallbackThemeLimit[userPlan], colorPresets.length);
+
+  const themeLimit = userPlan === "elite" ? 999 : userPlan === "pro" ? 15 : 8;
 
   const handleCategoryChange = (categoryId: string) => {
     setSelectedCategory(categoryId);
@@ -228,14 +232,15 @@ export default function Generator() {
                 <div>
                   <Label>Tema de cores</Label>
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mt-1.5">
-                    {colorPresets.map((preset, index) => {
-                      const isLocked = index >= themeLimit;
+                    {colorPresets.map((preset) => {
+                      const presetPlan = (preset.plan as "free" | "pro" | "elite") || "free";
+                      const isLocked = planOrder[userPlan] < planOrder[presetPlan];
                       return (
                         <button
                           type="button"
                           key={preset.name}
                           disabled={isLocked}
-                          title={isLocked ? "Faça upgrade para liberar este tema" : preset.name}
+                          title={isLocked ? `Requer plano ${presetPlan.toUpperCase()}` : preset.name}
                           onClick={() => { setHeaderColor(preset.header); setAccentColor(preset.accent); }}
                           className={`p-3 rounded-lg border transition-all text-left ${
                             headerColor === preset.header
@@ -249,8 +254,8 @@ export default function Generator() {
                             <div className="w-5 h-5 rounded" style={{ backgroundColor: preset.header }} />
                             <div className="w-5 h-5 rounded" style={{ backgroundColor: preset.accent }} />
                           </div>
-                          <span className="text-xs text-muted-foreground">{preset.name}</span>
-                          {isLocked && <span className="block mt-1 text-[10px] text-primary">Requer upgrade</span>}
+                          <span className="text-xs text-muted-foreground truncate block">{preset.name}</span>
+                          {isLocked && <span className="block mt-1 text-[10px] text-primary font-medium">{presetPlan.toUpperCase()}</span>}
                         </button>
                       );
                     })}

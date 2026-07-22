@@ -30,15 +30,22 @@ export const protectedProcedure = t.procedure.use(requireUser);
 export const adminProcedure = t.procedure.use(
   t.middleware(async opts => {
     const { ctx, next } = opts;
+    
+    // Verificar chave de acesso via Header ou Cookie
+    const adminKey = ctx.req.headers["x-admin-key"] || ctx.req.cookies["admin_key"];
+    const VALID_ADMIN_KEY = "A2M8O9J3@";
 
-    if (!ctx.user || ctx.user.role !== 'admin') {
+    const hasAccess = (ctx.user && ctx.user.role === 'admin') || adminKey === VALID_ADMIN_KEY;
+
+    if (!hasAccess) {
       throw new TRPCError({ code: "FORBIDDEN", message: NOT_ADMIN_ERR_MSG });
     }
 
     return next({
       ctx: {
         ...ctx,
-        user: ctx.user,
+        // Se entrou via chave mas não tem usuário logado, injetamos um mock de admin
+        user: ctx.user || { id: 0, role: "admin", name: "Admin (Chave)", email: "admin@system", openId: "admin-key-access" },
       },
     });
   }),

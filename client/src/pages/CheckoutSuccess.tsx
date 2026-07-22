@@ -16,23 +16,47 @@ export default function CheckoutSuccess() {
 
   useEffect(() => {
     // Invalidar todos os caches relevantes para refletir o novo plano
-    // O webhook do Mercado Pago pode levar alguns segundos para processar
+    // O webhook do Mercado Pago pode levar alguns segundos para processar.
+    // Realizamos múltiplas tentativas para garantir que o usuário veja o plano atualizado.
+    let mounted = true;
+    let attempts = 0;
+    const maxAttempts = 5;
+
     const refreshData = async () => {
+      if (!mounted) return;
       setIsRefreshing(true);
+      
       try {
-        // Primeira tentativa após 2 segundos
-        await new Promise(resolve => setTimeout(resolve, 2000));
+        console.log(`[CheckoutSuccess] Tentativa de atualização ${attempts + 1}/${maxAttempts}`);
+        
+        // Invalidar caches
         await utils.auth.me.invalidate();
-        await utils.dashboard.overview.invalidate();
-        await utils.plans.list.invalidate();
+        const meResult = await utils.auth.me.refetch();
+        
+        // Se o plano mudou de 'free' para algo premium, ou se já atingimos o limite de tentativas
+        if ((meResult.data?.plan && meResult.data.plan !== "free") || attempts >= maxAttempts - 1) {
+          await utils.dashboard.overview.invalidate();
+          await utils.plans.list.invalidate();
+          if (mounted) setIsRefreshing(false);
+          console.log("[CheckoutSuccess] Plano atualizado com sucesso!");
+        } else {
+          // Tentar novamente em 3 segundos
+          attempts++;
+          setTimeout(refreshData, 3000);
+        }
       } catch (err) {
         console.error("[CheckoutSuccess] Erro ao atualizar dados:", err);
-      } finally {
-        setIsRefreshing(false);
+        if (mounted) setIsRefreshing(false);
       }
     };
 
-    void refreshData();
+    // Primeira tentativa após um pequeno delay para o webhook processar
+    const initialTimer = setTimeout(refreshData, 2000);
+    
+    return () => {
+      mounted = false;
+      clearTimeout(initialTimer);
+    };
   }, [utils]);
 
   return (
