@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { auth, googleProvider } from "@/lib/firebase";
 import {
   onAuthStateChanged,
+  signInWithPopup,
   signInWithRedirect,
   getRedirectResult,
   signOut,
@@ -30,11 +31,9 @@ export function useAuth(options?: UseAuthOptions) {
   const [fbUser, setFbUser] = useState<FirebaseUser | null>(null);
   const [fbLoading, setFbLoading] = useState(true);
   const [sessionError, setSessionError] = useState<Error | null>(null);
-  const loginInProgressRef = useRef(false);
-  // Armazenar a rota de destino antes do redirect para poder voltar depois
-  const pendingRedirectRef = useRef<string | null>(null);
-  // Flag para processar o redirect result apenas uma vez
+  const loginPromiseRef = useRef<Promise<void> | null>(null);
   const redirectResultProcessed = useRef(false);
+  const pendingRedirectRef = useRef<string | null>(null);
 
   const meQuery = trpc.auth.me.useQuery(undefined, {
     retry: false,
@@ -42,9 +41,7 @@ export function useAuth(options?: UseAuthOptions) {
     enabled: !fbLoading,
   });
 
-  // ===== PROCESSAR REDIRECT RESULT =====
-  // Este é o handler que processa o resultado quando o Firebase redireciona de volta
-  // DEVE ser executado o mais cedo possível, antes de qualquer outra lógica
+  // ===== PROCESSAR REDIRECT RESULT (quando volta de signInWithRedirect) =====
   useEffect(() => {
     if (redirectResultProcessed.current) return;
     redirectResultProcessed.current = true;
@@ -54,23 +51,18 @@ export function useAuth(options?: UseAuthOptions) {
         const result = await getRedirectResult(auth);
         if (result && result.user) {
           console.log("[Auth] Redirect result: login bem-sucedido via redirect");
-          try {
-            const token = await result.user.getIdToken(true);
-            localStorage.setItem("firebase-token", token);
-            await utils.auth.me.invalidate();
-            // Usar a rota pendente se existir, senão ir pro dashboard
-            const target = pendingRedirectRef.current || "/dashboard";
-            pendingRedirectRef.current = null;
-            // Pequeno delay para garantir que o backend tenha processado o usuário
-            await new Promise(resolve => setTimeout(resolve, 1000));
-            setLocation(target);
-          } catch (tokenError) {
-            console.error("[Auth] Erro ao obter token após redirect:", tokenError);
-          }
+          const token = await result.user.getIdToken(true);
+          localStorage.setItem("firebase-token", token);
+          await utils.auth.me.invalidate();
+          const target = pendingRedirectRef.current || "/dashboard";
+          pendingRedirectRef.current = null;
+          // Aguardar o backend processar o usuário
+          await new Promise(resolve => setTimeout(resolve, 1500));
+          setLocation(target);
         }
       } catch (error: any) {
-        console.error("[Auth] Erro ao processar redirect result:", error.code, error.message);
-        // Se deu erro no redirect, limpar e tentar novamente na próxima
+        console.error("[Auth] Erro ao processar redirect result:", error?.code, error?.message);
+        // Não bloquear - o onAuthStateChanged pode já ter capturado o usuário
         redirectResultProcessed.current = false;
       }
     }
@@ -80,13 +72,17 @@ export function useAuth(options?: UseAuthOptions) {
 
   // ===== LISTENER PRINCIPAL DE AUTENTICAÇÃO =====
   useEffect(() => {
+    let mounted = true;
+
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      if (!mounted) return;
       setFbUser(user);
 
       try {
         if (user) {
           const token = await user.getIdToken(true);
           localStorage.setItem("firebase-token", token);
+          // Forçar re-fetch do me para sincronizar com o backend
           await utils.auth.me.invalidate();
         } else {
           localStorage.removeItem("firebase-token");
@@ -98,11 +94,16 @@ export function useAuth(options?: UseAuthOptions) {
         console.error("[Auth] Falha ao atualizar a sessão Firebase:", normalizedError);
         setSessionError(normalizedError);
       } finally {
-        setFbLoading(false);
+        if (mounted) {
+          setFbLoading(false);
+        }
       }
     });
 
-    return () => unsubscribe();
+    return () => {
+      mounted = false;
+      unsubscribe();
+    };
   }, [utils]);
 
   // ===== SYNC: Firebase autenticado mas servidor não reconhece =====
@@ -138,33 +139,69 @@ export function useAuth(options?: UseAuthOptions) {
   // ===== FUNÇÃO DE LOGIN =====
   const login = useCallback(async (customRedirect = "/dashboard") => {
     setSessionError(null);
-    loginInProgressRef.current = true;
 
-    try {
-      // Garantir persistência antes do login
-      await setPersistence(auth, browserLocalPersistence);
-
-      // Salvar a rota de destino antes do redirect
-      pendingRedirectRef.current = customRedirect;
-
-      // Usar signInWithRedirect - redireciona a página inteira para o Google
-      // Quando voltar, o getRedirectResult no useEffect acima vai processar
-      console.log("[Auth] Iniciando signInWithRedirect para:", customRedirect);
-      await signInWithRedirect(auth, googleProvider);
-      // Nota: signInWithRedirect NUNCA retorna - ele redireciona a página
-      // O controle não chega aqui. Quando volta, o useEffect processa o resultado.
-    } catch (error: any) {
-      console.error("[Auth] Falha no signInWithRedirect:", error.code, error.message);
-      loginInProgressRef.current = false;
-      if (error.code === 'auth/popup-blocked') {
-        setSessionError(new Error("O popup foi bloqueado pelo navegador. Por favor, permita popups e tente novamente."));
-      } else if (error.code === 'auth/unauthorized-domain') {
-        setSessionError(new Error("Domínio não autorizado no Firebase. Contate o suporte."));
-      } else {
-        setSessionError(error instanceof Error ? error : new Error("Não foi possível entrar com Google."));
-      }
-      throw error;
+    // Evitar múltiplos cliques simultâneos
+    if (loginPromiseRef.current) {
+      return loginPromiseRef.current;
     }
+
+    const loginPromise = (async () => {
+      try {
+        // Garantir persistência antes do login
+        await setPersistence(auth, browserLocalPersistence);
+
+        // Tentar signInWithPopup primeiro (melhor UX, funciona na maioria dos navegadores)
+        try {
+          console.log("[Auth] Tentando signInWithPopup...");
+          const result = await signInWithPopup(auth, googleProvider);
+          const token = await result.user.getIdToken(true);
+          localStorage.setItem("firebase-token", token);
+
+          // Invalidar cache e forçar re-fetch
+          await utils.auth.me.invalidate();
+          await utils.auth.me.fetch();
+
+          // Aguardar até que o servidor reconheça o usuário
+          const maxAttempts = 15;
+          let attempts = 0;
+          while (attempts < maxAttempts) {
+            const session = await utils.auth.me.fetch();
+            if (session) {
+              console.log("[Auth] Sessão confirmada pelo servidor após", attempts + 1, "tentativas");
+              break;
+            }
+            attempts++;
+            await new Promise(resolve => setTimeout(resolve, 500));
+          }
+
+          // Redirecionar para o destino
+          setLocation(customRedirect);
+        } catch (popupError: any) {
+          // Se o popup foi bloqueado ou falhou, usar signInWithRedirect
+          console.warn("[Auth] signInWithPopup falhou, usando signInWithRedirect:", popupError?.code);
+          setSessionError(null);
+          pendingRedirectRef.current = customRedirect;
+          await signInWithRedirect(auth, googleProvider);
+          // Nota: signInWithRedirect nunca retorna - a página é redirecionada
+          // O getRedirectResult no useEffect acima processa quando volta
+        }
+      } catch (error: any) {
+        console.error("[Auth] Falha no login:", error?.code, error?.message);
+        if (error?.code === 'auth/popup-closed-by-user' || error?.code === 'auth/cancelled-popup-request') {
+          setSessionError(null);
+        } else if (error?.code === 'auth/popup-blocked') {
+          setSessionError(new Error("O popup foi bloqueado pelo navegador. Por favor, permita popups e tente novamente."));
+        } else {
+          setSessionError(error instanceof Error ? error : new Error("Não foi possível entrar com Google."));
+        }
+        throw error;
+      } finally {
+        loginPromiseRef.current = null;
+      }
+    })();
+
+    loginPromiseRef.current = loginPromise;
+    return loginPromise;
   }, [setLocation, utils]);
 
   // ===== FUNÇÃO DE LOGOUT =====
