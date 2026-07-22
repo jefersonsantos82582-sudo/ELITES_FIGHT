@@ -172,13 +172,13 @@ export default function Dashboard() {
         </div>
 
         {/* Plan Progress */}
-        {!overview.unlimitedSheets && (
+        {overview && !overview.unlimitedSheets && (
           <Card className="p-6 bg-card/50 border-border/30">
             <div className="flex items-center justify-between mb-3">
               <div>
                 <h3 className="font-semibold">Limite mensal</h3>
                 <p className="text-sm text-muted-foreground">
-                  {overview.sheetsGeneratedThisMonth} de 1 planilha usada este mês
+                  {overview.sheetsGeneratedThisMonth} de {overview.plan === 'free' ? '1' : 'várias'} planilhas usadas este mês
                 </p>
               </div>
               <Link href="/#planos">
@@ -188,7 +188,7 @@ export default function Dashboard() {
                 </Button>
               </Link>
             </div>
-            <Progress value={Math.min(overview.sheetsGeneratedThisMonth * 100, 100)} className="h-2" />
+            <Progress value={Math.min((overview.sheetsGeneratedThisMonth || 0) * 100, 100)} className="h-2" />
           </Card>
         )}
 
