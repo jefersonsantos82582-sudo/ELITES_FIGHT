@@ -18,12 +18,8 @@ export default function Home() {
   const { data: plans } = trpc.plans.list.useQuery();
   const [, setLocation] = useLocation();
 
-  // Redirecionamento automático se já estiver logado ao entrar na Home
-  useEffect(() => {
-    if (user && !authLoading) {
-      setLocation("/dashboard");
-    }
-  }, [user, authLoading, setLocation]);
+  // Redirecionamento automático removido para evitar loops durante o login.
+  // O fluxo de login agora é controlado pela página /loading.
 
   const handlePlanAction = async (planCode: string) => {
     try {

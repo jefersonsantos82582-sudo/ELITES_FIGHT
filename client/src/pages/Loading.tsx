@@ -3,35 +3,41 @@ import { useAuth } from "@/_core/hooks/useAuth";
 import { useLocation } from "wouter";
 
 export default function Loading() {
-  const { isAuthenticated, loading: authLoading } = useAuth();
+  const { isAuthenticated, fbUser, loading: authLoading } = useAuth();
   const [, setLocation] = useLocation();
   const [timeoutReached, setTimeoutReached] = useState(false);
 
   useEffect(() => {
-    // Se o usuário já está autenticado e o loading terminou, redireciona para o dashboard
-    // IMPORTANTE: isAuthenticated depende da resposta do SERVIDOR (tRPC)
+    // Prioridade 1: Se o servidor confirmou (isAuthenticated), vai para o dashboard
     if (isAuthenticated && !authLoading) {
-      console.log("[Loading] Servidor confirmou autenticação! Redirecionando...");
-      const timer = setTimeout(() => {
-        setLocation("/dashboard");
-      }, 1000); // 1 segundo de delay para garantir que o tRPC cache esteja pronto
-      return () => clearTimeout(timer);
+      console.log("[Loading] Autenticado pelo servidor! Indo para dashboard...");
+      setLocation("/dashboard");
+      return;
     }
-  }, [isAuthenticated, authLoading, setLocation]);
 
-  // Timeout de segurança: aumentado para 15 segundos para conexões lentas ou cold start do servidor
+    // Prioridade 2: Se o Firebase logou (fbUser) mas o servidor ainda não (isAuthenticated),
+    // vamos esperar mais um pouco, pois a sincronização está ocorrendo.
+    if (fbUser && !isAuthenticated && !authLoading) {
+       console.log("[Loading] Firebase OK, aguardando servidor...");
+       // Não fazemos nada, deixamos o loading continuar até o timeout ou isAuthenticated virar true
+    }
+  }, [isAuthenticated, fbUser, authLoading, setLocation]);
+
+  // Timeout de segurança: 20 segundos
   useEffect(() => {
     const timer = setTimeout(() => {
       setTimeoutReached(true);
-    }, 15000);
+    }, 20000);
     return () => clearTimeout(timer);
   }, []);
 
   useEffect(() => {
-    if (timeoutReached && !authLoading) {
+    // Só volta para a home se o timeout estourou E realmente não temos nem usuário do Firebase
+    if (timeoutReached && !fbUser && !authLoading) {
+      console.log("[Loading] Timeout sem usuário. Voltando para home.");
       setLocation("/");
     }
-  }, [timeoutReached, authLoading, setLocation]);
+  }, [timeoutReached, fbUser, authLoading, setLocation]);
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-background">
