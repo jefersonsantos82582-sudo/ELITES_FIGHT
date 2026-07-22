@@ -3,7 +3,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { auth, googleProvider } from "@/lib/firebase";
 import {
   onAuthStateChanged,
-  signInWithPopup,
   signInWithRedirect,
   getRedirectResult,
   signOut,
@@ -31,10 +30,11 @@ export function useAuth(options?: UseAuthOptions) {
   const [fbUser, setFbUser] = useState<FirebaseUser | null>(null);
   const [fbLoading, setFbLoading] = useState(true);
   const [sessionError, setSessionError] = useState<Error | null>(null);
-  const loginPromiseRef = useRef<Promise<void> | null>(null);
-  const redirectResultProcessed = useRef(false);
+  const loginInProgressRef = useRef(false);
   // Armazenar a rota de destino antes do redirect para poder voltar depois
   const pendingRedirectRef = useRef<string | null>(null);
+  // Flag para processar o redirect result apenas uma vez
+  const redirectResultProcessed = useRef(false);
 
   const meQuery = trpc.auth.me.useQuery(undefined, {
     retry: false,
@@ -42,7 +42,43 @@ export function useAuth(options?: UseAuthOptions) {
     enabled: !fbLoading,
   });
 
-  // Listener principal de autenticação - onAuthStateChanged
+  // ===== PROCESSAR REDIRECT RESULT =====
+  // Este é o handler que processa o resultado quando o Firebase redireciona de volta
+  // DEVE ser executado o mais cedo possível, antes de qualquer outra lógica
+  useEffect(() => {
+    if (redirectResultProcessed.current) return;
+    redirectResultProcessed.current = true;
+
+    async function processRedirectResult() {
+      try {
+        const result = await getRedirectResult(auth);
+        if (result && result.user) {
+          console.log("[Auth] Redirect result: login bem-sucedido via redirect");
+          try {
+            const token = await result.user.getIdToken(true);
+            localStorage.setItem("firebase-token", token);
+            await utils.auth.me.invalidate();
+            // Usar a rota pendente se existir, senão ir pro dashboard
+            const target = pendingRedirectRef.current || "/dashboard";
+            pendingRedirectRef.current = null;
+            // Pequeno delay para garantir que o backend tenha processado o usuário
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            setLocation(target);
+          } catch (tokenError) {
+            console.error("[Auth] Erro ao obter token após redirect:", tokenError);
+          }
+        }
+      } catch (error: any) {
+        console.error("[Auth] Erro ao processar redirect result:", error.code, error.message);
+        // Se deu erro no redirect, limpar e tentar novamente na próxima
+        redirectResultProcessed.current = false;
+      }
+    }
+
+    processRedirectResult();
+  }, [setLocation, utils]);
+
+  // ===== LISTENER PRINCIPAL DE AUTENTICAÇÃO =====
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       setFbUser(user);
@@ -51,7 +87,6 @@ export function useAuth(options?: UseAuthOptions) {
         if (user) {
           const token = await user.getIdToken(true);
           localStorage.setItem("firebase-token", token);
-          // Invalidar o cache para forçar re-fetch do me
           await utils.auth.me.invalidate();
         } else {
           localStorage.removeItem("firebase-token");
@@ -70,33 +105,7 @@ export function useAuth(options?: UseAuthOptions) {
     return () => unsubscribe();
   }, [utils]);
 
-  // Processar redirect result do Firebase (quando volta de signInWithRedirect)
-  useEffect(() => {
-    if (redirectResultProcessed.current) return;
-    redirectResultProcessed.current = true;
-
-    async function processRedirectResult() {
-      try {
-        const result = await getRedirectResult(auth);
-        if (result && result.user) {
-          console.log("[Auth] Redirect result: login bem-sucedido via redirect");
-          const token = await result.user.getIdToken(true);
-          localStorage.setItem("firebase-token", token);
-          await utils.auth.me.invalidate();
-          // Usar a rota pendente se existir, senão ir pro dashboard
-          const target = pendingRedirectRef.current || "/dashboard";
-          pendingRedirectRef.current = null;
-          setLocation(target);
-        }
-      } catch (error) {
-        console.error("[Auth] Erro ao processar redirect result:", error);
-      }
-    }
-
-    processRedirectResult();
-  }, [setLocation, utils]);
-
-  // Sync: quando temos user do Firebase mas o servidor ainda não reconhece
+  // ===== SYNC: Firebase autenticado mas servidor não reconhece =====
   useEffect(() => {
     if (!fbUser || meQuery.isLoading || meQuery.isFetching) return;
 
@@ -110,14 +119,14 @@ export function useAuth(options?: UseAuthOptions) {
     }
   }, [fbUser, meQuery.data, meQuery.error, meQuery.isFetching, meQuery.isLoading]);
 
-  // Redirecionar para dashboard após login bem-sucedido
+  // ===== REDIRECIONAR PARA DASHBOARD APÓS LOGIN =====
   useEffect(() => {
     if (redirectToDashboardOnLogin && meQuery.data && !meQuery.isLoading) {
       setLocation("/dashboard");
     }
   }, [meQuery.data, meQuery.isLoading, redirectToDashboardOnLogin, setLocation]);
 
-  // Redirecionar para login se não autenticado e rota protegida
+  // ===== REDIRECIONAR PARA LOGIN SE NÃO AUTENTICADO =====
   useEffect(() => {
     if (!redirectOnUnauthenticated || fbLoading || meQuery.isLoading || (meQuery.data !== null && meQuery.data !== undefined)) return;
 
@@ -126,71 +135,39 @@ export function useAuth(options?: UseAuthOptions) {
     }
   }, [redirectOnUnauthenticated, redirectPath, fbLoading, meQuery.isLoading, setLocation, meQuery.data]);
 
+  // ===== FUNÇÃO DE LOGIN =====
   const login = useCallback(async (customRedirect = "/dashboard") => {
     setSessionError(null);
+    loginInProgressRef.current = true;
 
-    // Evitar múltiplos cliques simultâneos
-    if (loginPromiseRef.current) {
-      return loginPromiseRef.current;
-    }
+    try {
+      // Garantir persistência antes do login
+      await setPersistence(auth, browserLocalPersistence);
 
-    const loginPromise = (async () => {
-      try {
-        // Garantir persistência antes do login
-        await setPersistence(auth, browserLocalPersistence);
+      // Salvar a rota de destino antes do redirect
+      pendingRedirectRef.current = customRedirect;
 
-        // Estratégia: tentar signInWithPopup primeiro (melhor UX)
-        // Se falhar (popup blocked ou cross-origin issues), fallback para signInWithRedirect
-        try {
-          const result = await signInWithPopup(auth, googleProvider);
-          const token = await result.user.getIdToken(true);
-          localStorage.setItem("firebase-token", token);
-
-          // Invalidar cache e forçar re-fetch
-          await utils.auth.me.invalidate();
-          await utils.auth.me.fetch();
-
-          // Aguardar até que o servidor reconheça o usuário
-          const maxAttempts = 10;
-          let attempts = 0;
-          while (attempts < maxAttempts) {
-            const session = await utils.auth.me.fetch();
-            if (session) break;
-            attempts++;
-            await new Promise(resolve => setTimeout(resolve, 500));
-          }
-
-          // Redirecionar para o dashboard após confirmação de sessão
-          setLocation(customRedirect);
-        } catch (popupError: any) {
-          // Se o popup foi bloqueado ou falhou por cross-origin, usar redirect
-          console.warn("[Auth] signInWithPopup falhou, usando signInWithRedirect:", popupError.code, popupError.message);
-          setSessionError(null);
-          // Salvar a rota de destino antes do redirect
-          pendingRedirectRef.current = customRedirect;
-          // signInWithRedirect vai redirecionar toda a página, então não precisamos await
-          await signInWithRedirect(auth, googleProvider);
-          // A página será redirecionada e o redirectResult será processado no useEffect acima
-        }
-      } catch (error: any) {
-        console.error("[Auth] Falha no login:", error);
-        if (error.code === 'auth/popup-closed-by-user' || error.code === 'auth/cancelled-popup-request') {
-          setSessionError(null);
-        } else if (error.code === 'auth/popup-blocked') {
-          setSessionError(new Error("O popup foi bloqueado pelo navegador. Por favor, permita popups e tente novamente."));
-        } else {
-          setSessionError(error instanceof Error ? error : new Error("Não foi possível entrar com Google."));
-        }
-        throw error;
-      } finally {
-        loginPromiseRef.current = null;
+      // Usar signInWithRedirect - redireciona a página inteira para o Google
+      // Quando voltar, o getRedirectResult no useEffect acima vai processar
+      console.log("[Auth] Iniciando signInWithRedirect para:", customRedirect);
+      await signInWithRedirect(auth, googleProvider);
+      // Nota: signInWithRedirect NUNCA retorna - ele redireciona a página
+      // O controle não chega aqui. Quando volta, o useEffect processa o resultado.
+    } catch (error: any) {
+      console.error("[Auth] Falha no signInWithRedirect:", error.code, error.message);
+      loginInProgressRef.current = false;
+      if (error.code === 'auth/popup-blocked') {
+        setSessionError(new Error("O popup foi bloqueado pelo navegador. Por favor, permita popups e tente novamente."));
+      } else if (error.code === 'auth/unauthorized-domain') {
+        setSessionError(new Error("Domínio não autorizado no Firebase. Contate o suporte."));
+      } else {
+        setSessionError(error instanceof Error ? error : new Error("Não foi possível entrar com Google."));
       }
-    })();
-
-    loginPromiseRef.current = loginPromise;
-    return loginPromise;
+      throw error;
+    }
   }, [setLocation, utils]);
 
+  // ===== FUNÇÃO DE LOGOUT =====
   const logout = useCallback(async () => {
     try {
       await signOut(auth);
