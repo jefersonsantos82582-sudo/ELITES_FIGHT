@@ -13,8 +13,16 @@ import { useAuth } from "@/_core/hooks/useAuth";
 import { trpc } from "@/lib/trpc";
 
 export default function Home() {
-  const { user, login } = useAuth();
+  const { user, login, loading: authLoading } = useAuth();
   const { data: plans } = trpc.plans.list.useQuery();
+  const [, setLocation] = useLocation();
+
+  // Redirecionamento automático se já estiver logado ao entrar na Home
+  useEffect(() => {
+    if (user && !authLoading) {
+      setLocation("/dashboard");
+    }
+  }, [user, authLoading, setLocation]);
 
   const handlePlanAction = async (planCode: string) => {
     try {

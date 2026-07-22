@@ -157,13 +157,21 @@ export function useAuth(options?: UseAuthOptions) {
 
   // ===== REDIRECIONAR PARA LOGIN SE NÃO AUTENTICADO =====
   useEffect(() => {
+    // Só redireciona se:
+    // 1. A opção estiver ativa
+    // 2. O Firebase já terminou de carregar (fbLoading === false)
+    // 3. A query do usuário já terminou (isLoading === false)
+    // 4. NÃO existe usuário (meQuery.data === null)
     if (
       !redirectOnUnauthenticated ||
       fbLoading ||
       meQuery.isLoading ||
-      (meQuery.data !== null && meQuery.data !== undefined)
+      meQuery.data !== null
     ) return;
+
+    // Se chegamos aqui, o usuário definitivamente não está logado
     if (redirectPath && window.location.pathname !== redirectPath) {
+      console.log("[Auth] Redirecionando para login: não autenticado");
       setLocation(redirectPath);
     }
   }, [redirectOnUnauthenticated, redirectPath, fbLoading, meQuery.isLoading, setLocation, meQuery.data]);

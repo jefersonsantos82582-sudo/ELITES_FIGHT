@@ -28,7 +28,7 @@ export default function Navbar() {
 
   const handleLogin = async () => {
     try {
-      await login("/dashboard");
+      await login("/loading");
     } catch (err) {
       console.error("Erro no login:", err);
     }

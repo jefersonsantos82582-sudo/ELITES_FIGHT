@@ -10,9 +10,10 @@ export default function Loading() {
   useEffect(() => {
     // Se o usuário já está autenticado e o loading terminou, redireciona para o dashboard
     if (isAuthenticated && !authLoading) {
+      console.log("[Loading] Autenticado! Redirecionando para dashboard...");
       const timer = setTimeout(() => {
         setLocation("/dashboard");
-      }, 500);
+      }, 800); // Aumentado levemente para garantir sincronia
       return () => clearTimeout(timer);
     }
   }, [isAuthenticated, authLoading, setLocation]);

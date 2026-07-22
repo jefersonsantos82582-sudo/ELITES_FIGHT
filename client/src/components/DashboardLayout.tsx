@@ -25,16 +25,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     localStorage.setItem(SIDEBAR_WIDTH_KEY, sidebarWidth.toString());
   }, [sidebarWidth]);
 
-  // Garantir redirecionamento se o usuário estiver logado mas a página não mudar
-  useEffect(() => {
-    if (user) {
-      const path = window.location.pathname;
-      // Se estiver na raiz ou em páginas que exigem login mas mostram o card de "Entre para continuar"
-      if (path === "/" || path === "/login") {
-        setLocation("/dashboard");
-      }
-    }
-  }, [user, setLocation]);
+  // O redirecionamento automático foi removido daqui para evitar conflitos com a tela de loading
+  // e loops de redirecionamento. O controle de rotas agora é feito centralizadamente.
 
   const handleLogin = async () => {
     setIsLoggingIn(true);
