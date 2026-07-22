@@ -14,7 +14,7 @@ import Footer from "@/components/Footer";
 import MercadoPagoCheckout from "@/components/MercadoPagoCheckout";
 
 export default function Checkout() {
-  const { user, fbUser, loading: authLoading, login } = useAuth();
+  const { user, fbUser, isSyncing, loading: authLoading, login } = useAuth();
   const [location, setLocation] = useLocation();
   const [isLoading, setIsLoading] = useState(false);
   const [isLoggingIn, setIsLoggingIn] = useState(false);
@@ -88,11 +88,16 @@ export default function Checkout() {
     }
   };
 
-  // Mostrar carregamento apenas enquanto a autenticação básica está ocorrendo
-  if (authLoading) {
+  // Mostrar carregamento enquanto a autenticação básica ou sincronização está ocorrendo
+  if (authLoading || isSyncing) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        <div className="text-center">
+          <Loader2 className="h-8 w-8 animate-spin text-primary mx-auto mb-4" />
+          <p className="text-sm text-muted-foreground">
+            {isSyncing ? "Sincronizando sua conta..." : "Carregando..."}
+          </p>
+        </div>
       </div>
     );
   }

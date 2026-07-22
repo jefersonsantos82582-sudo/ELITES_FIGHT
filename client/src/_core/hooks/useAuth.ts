@@ -36,6 +36,7 @@ export function useAuth(options?: UseAuthOptions) {
   // 1. getRedirectResult() terminar (pode haver redirect do Google pendente)
   // 2. onAuthStateChanged disparar pela primeira vez
   const [fbLoading, setFbLoading] = useState(true);
+  const [isSyncing, setIsSyncing] = useState(false);
   const [sessionError, setSessionError] = useState<Error | null>(null);
   const loginPromiseRef = useRef<Promise<void> | null>(null);
   const authInitialized = useRef(false);
@@ -98,11 +99,20 @@ export function useAuth(options?: UseAuthOptions) {
 
         try {
           if (user) {
+            setIsSyncing(true);
             const token = await user.getIdToken(true);
             localStorage.setItem("firebase-token", token);
             document.cookie = `${COOKIE_NAME}=${token}; path=/; max-age=3600; SameSite=Lax`;
+            
+            // Timeout de segurança: não deixar o loading travar por mais de 5s
+            const syncTimeout = setTimeout(() => {
+              if (mounted) setIsSyncing(false);
+            }, 5000);
+
             await utils.auth.me.invalidate();
             await utils.auth.me.refetch();
+            
+            clearTimeout(syncTimeout);
           } else {
             localStorage.removeItem("firebase-token");
             document.cookie = `${COOKIE_NAME}=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT`;
@@ -112,7 +122,10 @@ export function useAuth(options?: UseAuthOptions) {
         } catch (error) {
           console.error("[Auth] Falha ao atualizar sessão:", error);
         } finally {
-          if (mounted) setFbLoading(false);
+          if (mounted) {
+            setFbLoading(false);
+            setIsSyncing(false);
+          }
         }
       });
 
@@ -214,18 +227,18 @@ export function useAuth(options?: UseAuthOptions) {
     }
   }, [utils, setLocation]);
 
-  // loading é true enquanto o Firebase não inicializou.
-  // Se o fbUser existe, meQuery.isLoading indica se estamos sincronizando com o servidor.
-  const loading = fbLoading || (fbUser !== null && meQuery.isInitialLoading);
+  // loading é true enquanto o Firebase inicializa ou o servidor está sincronizando
+  const loading = fbLoading || isSyncing || (fbUser !== null && meQuery.isInitialLoading);
   const user = meQuery.data ?? null;
 
   return useMemo(() => ({
     user,
-    fbUser, // Exposto para que a UI saiba se o usuário já logou no Firebase
+    fbUser,
+    isSyncing,
     loading,
     error: sessionError,
     isAuthenticated: Boolean(user),
     login,
     logout,
-  }), [user, fbUser, loading, sessionError, login, logout]);
+  }), [user, fbUser, isSyncing, loading, sessionError, login, logout]);
 }

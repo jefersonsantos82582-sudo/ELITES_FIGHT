@@ -17,7 +17,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       : SIDEBAR_DEFAULT_WIDTH;
   });
 
-  const { user, fbUser, loading, login, error } = useAuth();
+  const { user, fbUser, isSyncing, loading, login, error } = useAuth();
   const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [, setLocation] = useLocation();
 
@@ -47,8 +47,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     }
   };
 
-  // Mostrar skeleton apenas enquanto a autenticação básica (Firebase + primeira checagem do servidor) está ocorrendo
-  if (loading) {
+  // Mostrar skeleton enquanto o Firebase/tRPC ainda está carregando ou sincronizando
+  // O isSyncing garante que se o Firebase logou, esperaremos o servidor sem mostrar o botão de login
+  if (loading || isSyncing) {
     return <DashboardLayoutSkeleton />;
   }
 
