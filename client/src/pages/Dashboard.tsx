@@ -35,7 +35,11 @@ export default function Dashboard() {
     }
   }, []);
 
-  if (authLoading || isLoading) {
+  // Fallback: Se o tRPC falhou (erro 10001) mas temos o fbUser,
+  // vamos mostrar um Dashboard "parcial" em vez de uma tela de erro bloqueante.
+  const showFallback = (isError || !overview) && fbUser;
+
+  if (authLoading || (isLoading && !fbUser)) {
     return (
       <DashboardLayout>
         <div className="flex h-96 items-center justify-center">
@@ -45,7 +49,8 @@ export default function Dashboard() {
     );
   }
 
-  if (isError || !overview) {
+  // Só mostra erro se realmente não tivermos nem o Firebase para salvar o dia
+  if (isError && !fbUser) {
     return (
       <DashboardLayout>
         <div className="mx-auto flex min-h-96 max-w-xl items-center justify-center">
@@ -64,6 +69,9 @@ export default function Dashboard() {
       </DashboardLayout>
     );
   }
+
+  // Pegar planos para a vitrine
+  const { data: allPlans } = trpc.plans.list.useQuery();
 
   const planBadgeColor: Record<"free" | "pro" | "elite", string> = {
     free: "bg-muted text-muted-foreground",
@@ -88,29 +96,31 @@ export default function Dashboard() {
 
         {/* Profile Card */}
         <ProfileCard
-          userName={overview.userName}
-          userEmail={overview.userEmail}
-          userPhotoUrl={overview.userPhotoUrl}
-          plan={overview.plan}
-          planName={overview.planName}
-          planExpiresAt={overview.planExpiresAt ? (typeof overview.planExpiresAt === 'string' ? overview.planExpiresAt : (overview.planExpiresAt as Date).toISOString()) : null}
-          planDescription={overview.planDescription}
+          userName={overview?.userName || fbUser?.displayName || "Usuário"}
+          userEmail={overview?.userEmail || fbUser?.email || "-"}
+          userPhotoUrl={overview?.userPhotoUrl || fbUser?.photoURL || null}
+          plan={(overview?.plan as any) || "free"}
+          planName={overview?.planName || "FREE"}
+          planExpiresAt={overview?.planExpiresAt ? (typeof overview.planExpiresAt === 'string' ? overview.planExpiresAt : (overview.planExpiresAt as Date).toISOString()) : null}
+          planDescription={overview?.planDescription || "Plano básico gratuito"}
         />
 
         {/* Plan Benefits Card */}
-        <PlanBenefitsCard
-          planName={overview.planName}
-          templatesUnlocked={overview.templatesUnlocked}
-          totalTemplates={overview.totalTemplates}
-          themesUnlocked={overview.themesUnlocked}
-          aiUsesLeft={overview.aiUsesLeft}
-          maxAiUses={overview.maxAiUses}
-          customLogo={overview.customLogo}
-          hasWatermark={overview.hasWatermark}
-          unlimitedSheets={overview.unlimitedSheets}
-          sheetsGeneratedThisMonth={overview.sheetsGeneratedThisMonth}
-          planFeatures={overview.planFeatures}
-        />
+        {overview && (
+          <PlanBenefitsCard
+            planName={overview.planName}
+            templatesUnlocked={overview.templatesUnlocked}
+            totalTemplates={overview.totalTemplates}
+            themesUnlocked={overview.themesUnlocked}
+            aiUsesLeft={overview.aiUsesLeft}
+            maxAiUses={overview.maxAiUses}
+            customLogo={overview.customLogo}
+            hasWatermark={overview.hasWatermark}
+            unlimitedSheets={overview.unlimitedSheets}
+            sheetsGeneratedThisMonth={overview.sheetsGeneratedThisMonth}
+            planFeatures={overview.planFeatures}
+          />
+        )}
 
         {/* Quick Actions Header */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -182,6 +192,45 @@ export default function Dashboard() {
           </Card>
         )}
 
+        {/* Plan Subscription Section (Nova) */}
+        <div className="space-y-4 pt-4">
+          <div className="flex items-center gap-2">
+            <Crown className="w-5 h-5 text-primary" />
+            <h2 className="font-display text-xl md:text-2xl font-bold">Assinar Planos</h2>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {allPlans?.map((plan) => (
+              <Card 
+                key={plan.code} 
+                className={`p-6 bg-card/50 border-border/30 flex flex-col justify-between hover:border-primary/30 transition-all ${
+                  overview?.plan === plan.code ? "border-primary/50 bg-primary/5" : ""
+                }`}
+              >
+                <div>
+                  <div className="flex justify-between items-start mb-2">
+                    <h3 className="font-bold">{plan.name}</h3>
+                    {overview?.plan === plan.code && (
+                      <Badge variant="outline" className="text-[10px] bg-primary/10 text-primary border-primary/20">ATUAL</Badge>
+                    )}
+                  </div>
+                  <p className="text-2xl font-bold mb-1">R$ {plan.priceMonthly ?? "0"}</p>
+                  <p className="text-xs text-muted-foreground mb-4 line-clamp-2">{plan.description}</p>
+                </div>
+                <Link href={plan.code === "free" ? "/dashboard" : `/checkout?plan=${plan.code}`}>
+                  <Button 
+                    variant={overview?.plan === plan.code ? "outline" : "default"} 
+                    size="sm" 
+                    className={`w-full ${overview?.plan !== plan.code ? "bg-gold-gradient text-black font-semibold" : ""}`}
+                    disabled={overview?.plan === plan.code}
+                  >
+                    {overview?.plan === plan.code ? "Plano Atual" : "Assinar Agora"}
+                  </Button>
+                </Link>
+              </Card>
+            ))}
+          </div>
+        </div>
+
         {/* Recent History */}
         <Card className="p-6 bg-card/50 border-border/30">
           <div className="flex items-center justify-between mb-4">
@@ -189,10 +238,10 @@ export default function Dashboard() {
               <Clock className="w-4 h-4 text-primary" />
               Histórico recente
             </h3>
-            <span className="text-xs text-muted-foreground">{overview.totalSheets} total</span>
+            <span className="text-xs text-muted-foreground">{overview?.totalSheets ?? 0} total</span>
           </div>
 
-          {overview.recentSheets.length === 0 ? (
+          {!overview || overview.recentSheets.length === 0 ? (
             <div className="text-center py-12">
               <FileSpreadsheet className="w-12 h-12 text-muted-foreground/30 mx-auto mb-3" />
               <p className="text-sm text-muted-foreground mb-4">
