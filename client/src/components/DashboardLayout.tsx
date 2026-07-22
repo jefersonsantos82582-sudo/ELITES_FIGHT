@@ -1,5 +1,6 @@
 import { SIDEBAR_WIDTH_KEY, SIDEBAR_MIN_WIDTH, SIDEBAR_MAX_WIDTH, SIDEBAR_DEFAULT_WIDTH } from "@/lib/utils";
 import { useEffect, useState, type CSSProperties } from "react";
+import { useLocation } from "wouter";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import { DashboardLayoutContent } from "./DashboardLayoutContent";
 import { DashboardLayoutSkeleton } from "./DashboardLayoutSkeleton";
