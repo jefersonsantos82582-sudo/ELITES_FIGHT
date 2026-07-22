@@ -107,17 +107,11 @@ export function useAuth(options?: UseAuthOptions) {
             localStorage.setItem("firebase-token", token);
             document.cookie = `${COOKIE_NAME}=${token}; path=/; max-age=3600; SameSite=Lax`;
             
-            console.log("[Auth] Token sincronizado, invalidando cache...");
+            console.log("[Auth] Token sincronizado, disparando refetch em background...");
 
-            // Invalidar e esperar o refetch do 'me' para garantir que o servidor reconheça o usuário
-            await utils.auth.me.invalidate();
-            const meResult = await utils.auth.me.refetch();
-            
-            if (meResult.data) {
-              console.log("[Auth] Servidor reconheceu o usuário:", meResult.data.email);
-            } else {
-              console.warn("[Auth] Servidor ainda não reconheceu o usuário após refetch");
-            }
+            // Disparar refetch em background sem travar a UI principal
+            utils.auth.me.invalidate();
+            utils.auth.me.refetch();
           } else {
             localStorage.removeItem("firebase-token");
             document.cookie = `${COOKIE_NAME}=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT`;

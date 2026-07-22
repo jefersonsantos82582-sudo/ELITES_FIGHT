@@ -8,18 +8,20 @@ export default function Loading() {
   const [timeoutReached, setTimeoutReached] = useState(false);
 
   useEffect(() => {
-    // Prioridade 1: Se o servidor confirmou (isAuthenticated), vai para o dashboard
-    if (isAuthenticated && !authLoading) {
-      console.log("[Loading] Autenticado pelo servidor! Indo para dashboard...");
+    // ROTA DE EMERGÊNCIA: Se o Firebase já logou (fbUser), não vamos deixar o usuário esperando.
+    // Redirecionamos para o dashboard imediatamente. O DashboardLayout cuidará de mostrar
+    // o loading interno enquanto os dados do servidor (tRPC) não chegam.
+    if (fbUser && !authLoading) {
+      console.log("[Loading] Firebase detectado! Redirecionando imediatamente para Dashboard...");
       setLocation("/dashboard");
       return;
     }
 
-    // Prioridade 2: Se o Firebase logou (fbUser) mas o servidor ainda não (isAuthenticated),
-    // vamos esperar mais um pouco, pois a sincronização está ocorrendo.
-    if (fbUser && !isAuthenticated && !authLoading) {
-       console.log("[Loading] Firebase OK, aguardando servidor...");
-       // Não fazemos nada, deixamos o loading continuar até o timeout ou isAuthenticated virar true
+    // Fallback: Se o servidor confirmou (isAuthenticated) mesmo sem fbUser (raro, mas possível via cookie)
+    if (isAuthenticated && !authLoading) {
+      console.log("[Loading] Autenticado pelo servidor! Indo para dashboard...");
+      setLocation("/dashboard");
+      return;
     }
   }, [isAuthenticated, fbUser, authLoading, setLocation]);
 
