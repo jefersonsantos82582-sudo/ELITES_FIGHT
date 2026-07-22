@@ -13,6 +13,7 @@ import {
   GoogleAuthProvider
 } from "firebase/auth";
 import { useLocation } from "wouter";
+import { COOKIE_NAME } from "@shared/const";
 
 type UseAuthOptions = {
   redirectOnUnauthenticated?: boolean;
@@ -67,7 +68,7 @@ export function useAuth(options?: UseAuthOptions) {
           const token = await result.user.getIdToken(true);
           localStorage.setItem("firebase-token", token);
           // Definir cookie para persistência robusta no servidor
-          document.cookie = `firebase-token=${token}; path=/; max-age=3600; SameSite=Lax`;
+          document.cookie = `${COOKIE_NAME}=${token}; path=/; max-age=3600; SameSite=Lax`;
 
           // Recuperar destino salvo antes do redirect
           const savedPath = sessionStorage.getItem("auth-redirect-path") || "/dashboard";
@@ -99,11 +100,12 @@ export function useAuth(options?: UseAuthOptions) {
           if (user) {
             const token = await user.getIdToken(true);
             localStorage.setItem("firebase-token", token);
-            document.cookie = `firebase-token=${token}; path=/; max-age=3600; SameSite=Lax`;
+            document.cookie = `${COOKIE_NAME}=${token}; path=/; max-age=3600; SameSite=Lax`;
             await utils.auth.me.invalidate();
+            await utils.auth.me.refetch();
           } else {
             localStorage.removeItem("firebase-token");
-            document.cookie = "firebase-token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
+            document.cookie = `${COOKIE_NAME}=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT`;
             utils.auth.me.setData(undefined, null);
             utils.dashboard.overview.reset();
           }
@@ -168,8 +170,9 @@ export function useAuth(options?: UseAuthOptions) {
           const result = await signInWithPopup(firebaseAuth, provider);
           const token = await result.user.getIdToken(true);
           localStorage.setItem("firebase-token", token);
-          document.cookie = `firebase-token=${token}; path=/; max-age=3600; SameSite=Lax`;
+          document.cookie = `${COOKIE_NAME}=${token}; path=/; max-age=3600; SameSite=Lax`;
           await utils.auth.me.invalidate();
+          await utils.auth.me.refetch();
           setLocation(customRedirect);
         } catch (popupError: any) {
           // Popup bloqueado (muito comum em mobile) → usar redirect
@@ -197,7 +200,7 @@ export function useAuth(options?: UseAuthOptions) {
     try {
       await signOut(firebaseAuth);
       localStorage.removeItem("firebase-token");
-      document.cookie = "firebase-token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
+      document.cookie = `${COOKIE_NAME}=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT`;
       utils.auth.me.setData(undefined, null);
       utils.dashboard.overview.reset();
       await utils.auth.me.invalidate();

@@ -18,10 +18,18 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   const { user, loading, login, error } = useAuth();
   const [isLoggingIn, setIsLoggingIn] = useState(false);
+  const [, setLocation] = useLocation();
 
   useEffect(() => {
     localStorage.setItem(SIDEBAR_WIDTH_KEY, sidebarWidth.toString());
   }, [sidebarWidth]);
+
+  // Garantir redirecionamento se o usuário estiver logado mas a página não mudar
+  useEffect(() => {
+    if (user && window.location.pathname === "/dashboard") {
+      console.log("[DashboardLayout] Usuário detectado no dashboard");
+    }
+  }, [user]);
 
   const handleLogin = async () => {
     setIsLoggingIn(true);

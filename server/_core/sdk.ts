@@ -123,29 +123,20 @@ class SDKServer {
       const { uid, name, email, picture } = decodedToken;
       const signedInAt = new Date();
 
-      let user = await db.getUserByOpenId(uid);
-      if (!user) {
-        await db.upsertUser({
-          openId: uid,
-          name: name || email || "Usuário Google",
-          email: email || null,
-          photoUrl: picture || null,
-          loginMethod: "google",
-          lastSignedIn: signedInAt,
-        });
-        user = await db.getUserByOpenId(uid);
-      } else {
-        await db.upsertUser({
-          openId: user.openId,
-          name: name || user.name,
-          email: email || user.email,
-          photoUrl: picture || user.photoUrl,
-          lastSignedIn: signedInAt,
-        });
-      }
+      // Garantir que o usuário exista no banco de dados
+      await db.upsertUser({
+        openId: uid,
+        name: name || email || "Usuário Google",
+        email: email || null,
+        photoUrl: picture || null,
+        loginMethod: "google",
+        lastSignedIn: signedInAt,
+      });
 
+      const user = await db.getUserByOpenId(uid);
       if (!user) {
-        throw new Error("Usuário não foi criado após a autenticação");
+        console.error(`[Auth] Falha crítica: Usuário ${uid} não encontrado no banco após upsert`);
+        throw new Error("Usuário não encontrado no banco de dados após a autenticação");
       }
 
       return user;
