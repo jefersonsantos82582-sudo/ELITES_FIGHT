@@ -39,7 +39,7 @@ export default function Checkout() {
     : [];
 
   useEffect(() => {
-    if (authLoading) return;
+    if (authLoading || isSyncing) return;
 
     // Se não há planCode válido, voltar para a home
     if (!planCode) {
@@ -160,11 +160,11 @@ export default function Checkout() {
         <div className="container max-w-2xl">
           <Button
             variant="ghost"
-            onClick={() => setLocation("/#planos")}
+            onClick={() => setLocation(user ? "/dashboard" : "/#planos")}
             className="mb-8"
           >
             <ArrowLeft className="w-4 h-4 mr-2" />
-            Voltar aos planos
+            Voltar {user ? "ao dashboard" : "aos planos"}
           </Button>
 
           <Card className="p-8 bg-card border-border/30">
