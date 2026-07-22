@@ -75,13 +75,13 @@ export function useAuth(options?: UseAuthOptions) {
           const savedPath = sessionStorage.getItem("auth-redirect-path") || "/dashboard";
           sessionStorage.removeItem("auth-redirect-path");
 
-          // Invalidar cache e redirecionar
+          // Invalidar cache e redirecionar para loading
           await utils.auth.me.invalidate();
 
           if (mounted) {
             setFbUser(result.user);
             setFbLoading(false);
-            setLocation(savedPath);
+            setLocation("/loading");
             return; // onAuthStateChanged vai disparar logo em seguida, mas já tratamos
           }
         }
@@ -147,9 +147,9 @@ export function useAuth(options?: UseAuthOptions) {
   // ===== REDIRECIONAR PARA DASHBOARD APÓS LOGIN =====
   useEffect(() => {
     if (redirectToDashboardOnLogin && meQuery.data && !meQuery.isLoading) {
-      // Pequeno delay para garantir que o estado do tRPC e do Firebase estejam sincronizados
+      // Redireciona para a tela de loading que depois vai para o dashboard
       const timer = setTimeout(() => {
-        setLocation("/dashboard");
+        setLocation("/loading");
       }, 100);
       return () => clearTimeout(timer);
     }
@@ -190,7 +190,7 @@ export function useAuth(options?: UseAuthOptions) {
           document.cookie = `${COOKIE_NAME}=${token}; path=/; max-age=3600; SameSite=Lax`;
           await utils.auth.me.invalidate();
           await utils.auth.me.refetch();
-          setLocation(customRedirect);
+          setLocation("/loading");
         } catch (popupError: any) {
           // Popup bloqueado (muito comum em mobile) → usar redirect
           // Salvar o destino para recuperar após o retorno do Google

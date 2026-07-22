@@ -20,11 +20,11 @@ export default function Home() {
     try {
       if (!user) {
         if (planCode === "free") {
-          // Para plano free, logar e ir ao dashboard
-          await login("/dashboard");
+          // Para plano free, logar e ir ao loading -> dashboard
+          await login("/loading");
         } else {
           // Para planos pagos, salvar o plano e redirecionar para checkout após login
-          await login(`/checkout?plan=${planCode}`);
+          await login(`/loading`);
         }
         return;
       }

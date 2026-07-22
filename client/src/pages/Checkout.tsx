@@ -79,8 +79,8 @@ export default function Checkout() {
   const handleLogin = async () => {
     setIsLoggingIn(true);
     try {
-      // Após o login, retornar para esta mesma página de checkout
-      await login(`/checkout?plan=${planCode}`);
+      // Após o login, redirecionar para a tela de loading -> dashboard
+      await login("/loading");
     } catch (err) {
       console.error("[Checkout] Erro no login:", err);
     } finally {

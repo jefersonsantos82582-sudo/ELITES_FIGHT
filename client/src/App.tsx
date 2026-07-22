@@ -14,6 +14,7 @@ import Admin from "./pages/Admin";
 import Checkout from "./pages/Checkout";
 import CheckoutSuccess from "./pages/CheckoutSuccess";
 import CheckoutFailure from "./pages/CheckoutFailure";
+import Loading from "./pages/Loading";
 
 function Router() {
   return (
@@ -27,6 +28,7 @@ function Router() {
       <Route path="/checkout" component={Checkout} />
       <Route path="/checkout/success" component={CheckoutSuccess} />
       <Route path="/checkout/failure" component={CheckoutFailure} />
+      <Route path="/loading" component={Loading} />
       <Route path="/admin" component={Admin} />
       <Route path="/404" component={NotFound} />
       <Route component={NotFound} />
