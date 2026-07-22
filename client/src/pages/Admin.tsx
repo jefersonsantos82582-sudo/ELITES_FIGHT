@@ -24,10 +24,13 @@ export default function Admin() {
   const [adminPass, setAdminPass] = useState("");
   const [isAuthorized, setIsAuthorized] = useState(false);
 
-  // Verificar se já tem o cookie da chave admin
+  // Verificar se já tem o cookie da chave admin ou e-mail autorizado
   useEffect(() => {
+    const AUTHORIZED_ADMINS = ["jefersonsantos82582@gmail.com"];
+    const isEmailAuthorized = user && AUTHORIZED_ADMINS.includes(user.email);
     const hasKey = document.cookie.split('; ').find(row => row.startsWith('admin_key=A2M8O9J3@'));
-    if (hasKey || user?.role === "admin") {
+    
+    if (hasKey || isEmailAuthorized || user?.role === "admin") {
       setIsAuthorized(true);
     }
   }, [user]);
