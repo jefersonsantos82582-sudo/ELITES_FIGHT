@@ -28,9 +28,9 @@ const redirectToLoginIfUnauthorized = (error: unknown) => {
 
   if (!isUnauthorized) return;
   
-  console.warn("Usuário não autorizado, limpando tokens...");
-  localStorage.removeItem("firebase-token");
-  // Não redirecionar automaticamente - o useAuth hook cuida disso
+  // REMOVIDO: Limpeza agressiva do token.
+  // Deixamos o useAuth gerenciar o estado do usuário com base no Firebase e na resposta real do servidor.
+  console.warn("Usuário não autorizado pelo servidor.");
 };
 
 queryClient.getQueryCache().subscribe(event => {

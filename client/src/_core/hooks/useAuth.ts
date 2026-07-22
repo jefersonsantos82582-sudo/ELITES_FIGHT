@@ -66,6 +66,8 @@ export function useAuth(options?: UseAuthOptions) {
           console.log("[Auth] Retorno de redirect do Google detectado");
           const token = await result.user.getIdToken(true);
           localStorage.setItem("firebase-token", token);
+          // Definir cookie para persistência robusta no servidor
+          document.cookie = `firebase-token=${token}; path=/; max-age=3600; SameSite=Lax`;
 
           // Recuperar destino salvo antes do redirect
           const savedPath = sessionStorage.getItem("auth-redirect-path") || "/dashboard";
@@ -97,9 +99,11 @@ export function useAuth(options?: UseAuthOptions) {
           if (user) {
             const token = await user.getIdToken(true);
             localStorage.setItem("firebase-token", token);
+            document.cookie = `firebase-token=${token}; path=/; max-age=3600; SameSite=Lax`;
             await utils.auth.me.invalidate();
           } else {
             localStorage.removeItem("firebase-token");
+            document.cookie = "firebase-token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
             utils.auth.me.setData(undefined, null);
             utils.dashboard.overview.reset();
           }
@@ -164,6 +168,7 @@ export function useAuth(options?: UseAuthOptions) {
           const result = await signInWithPopup(firebaseAuth, provider);
           const token = await result.user.getIdToken(true);
           localStorage.setItem("firebase-token", token);
+          document.cookie = `firebase-token=${token}; path=/; max-age=3600; SameSite=Lax`;
           await utils.auth.me.invalidate();
           setLocation(customRedirect);
         } catch (popupError: any) {
@@ -192,6 +197,7 @@ export function useAuth(options?: UseAuthOptions) {
     try {
       await signOut(firebaseAuth);
       localStorage.removeItem("firebase-token");
+      document.cookie = "firebase-token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
       utils.auth.me.setData(undefined, null);
       utils.dashboard.overview.reset();
       await utils.auth.me.invalidate();
