@@ -33,6 +33,8 @@ export function useAuth(options?: UseAuthOptions) {
   const [sessionError, setSessionError] = useState<Error | null>(null);
   const loginPromiseRef = useRef<Promise<void> | null>(null);
   const redirectResultProcessed = useRef(false);
+  // Armazenar a rota de destino antes do redirect para poder voltar depois
+  const pendingRedirectRef = useRef<string | null>(null);
 
   const meQuery = trpc.auth.me.useQuery(undefined, {
     retry: false,
@@ -68,7 +70,7 @@ export function useAuth(options?: UseAuthOptions) {
     return () => unsubscribe();
   }, [utils]);
 
-  // Processar redirect result do Firebase (quando vem de signInWithRedirect)
+  // Processar redirect result do Firebase (quando volta de signInWithRedirect)
   useEffect(() => {
     if (redirectResultProcessed.current) return;
     redirectResultProcessed.current = true;
@@ -81,8 +83,10 @@ export function useAuth(options?: UseAuthOptions) {
           const token = await result.user.getIdToken(true);
           localStorage.setItem("firebase-token", token);
           await utils.auth.me.invalidate();
-          // Redirecionar para o dashboard após redirect login
-          setLocation("/dashboard");
+          // Usar a rota pendente se existir, senão ir pro dashboard
+          const target = pendingRedirectRef.current || "/dashboard";
+          pendingRedirectRef.current = null;
+          setLocation(target);
         }
       } catch (error) {
         console.error("[Auth] Erro ao processar redirect result:", error);
@@ -135,7 +139,7 @@ export function useAuth(options?: UseAuthOptions) {
         // Garantir persistência antes do login
         await setPersistence(auth, browserLocalPersistence);
 
-        // Estratégia: tentar signInWithPopup primeiro
+        // Estratégia: tentar signInWithPopup primeiro (melhor UX)
         // Se falhar (popup blocked ou cross-origin issues), fallback para signInWithRedirect
         try {
           const result = await signInWithPopup(auth, googleProvider);
@@ -160,8 +164,11 @@ export function useAuth(options?: UseAuthOptions) {
           setLocation(customRedirect);
         } catch (popupError: any) {
           // Se o popup foi bloqueado ou falhou por cross-origin, usar redirect
-          console.warn("[Auth] signInWithPopup falhou, tentando signInWithRedirect:", popupError);
+          console.warn("[Auth] signInWithPopup falhou, usando signInWithRedirect:", popupError.code, popupError.message);
           setSessionError(null);
+          // Salvar a rota de destino antes do redirect
+          pendingRedirectRef.current = customRedirect;
+          // signInWithRedirect vai redirecionar toda a página, então não precisamos await
           await signInWithRedirect(auth, googleProvider);
           // A página será redirecionada e o redirectResult será processado no useEffect acima
         }
