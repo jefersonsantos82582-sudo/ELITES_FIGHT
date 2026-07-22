@@ -24,6 +24,9 @@ export default function Dashboard() {
   const { data: overview, isLoading, isError, error, refetch } = overviewQuery;
   const [location] = useLocation();
   const [paymentStatus, setPaymentStatus] = useState<'success' | 'failure' | null>(null);
+  
+  // Pegar planos para a vitrine - Mover para o topo para evitar erro de ordem de hooks
+  const { data: allPlans } = trpc.plans.list.useQuery();
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -69,9 +72,6 @@ export default function Dashboard() {
       </DashboardLayout>
     );
   }
-
-  // Pegar planos para a vitrine
-  const { data: allPlans } = trpc.plans.list.useQuery();
 
   const planBadgeColor: Record<"free" | "pro" | "elite", string> = {
     free: "bg-muted text-muted-foreground",
