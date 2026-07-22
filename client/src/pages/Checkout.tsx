@@ -14,7 +14,7 @@ import Footer from "@/components/Footer";
 import MercadoPagoCheckout from "@/components/MercadoPagoCheckout";
 
 export default function Checkout() {
-  const { user, loading: authLoading, login } = useAuth();
+  const { user, fbUser, loading: authLoading, login } = useAuth();
   const [location, setLocation] = useLocation();
   const [isLoading, setIsLoading] = useState(false);
   const [isLoggingIn, setIsLoggingIn] = useState(false);
@@ -88,10 +88,14 @@ export default function Checkout() {
     }
   };
 
-  if (authLoading) {
+  // Se o Firebase está carregando OU se o usuário está logado no Firebase mas o servidor ainda não sincronizou
+  if (authLoading || (fbUser && !user)) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        <div className="text-center">
+          <Loader2 className="h-8 w-8 animate-spin text-primary mx-auto mb-4" />
+          <p className="text-sm text-muted-foreground">Sincronizando sua conta...</p>
+        </div>
       </div>
     );
   }

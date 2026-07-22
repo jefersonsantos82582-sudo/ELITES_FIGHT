@@ -220,10 +220,11 @@ export function useAuth(options?: UseAuthOptions) {
 
   return useMemo(() => ({
     user,
+    fbUser, // Exposto para que a UI saiba se o usuário já logou no Firebase
     loading,
     error: sessionError,
     isAuthenticated: Boolean(user),
     login,
     logout,
-  }), [user, loading, sessionError, login, logout]);
+  }), [user, fbUser, loading, sessionError, login, logout]);
 }

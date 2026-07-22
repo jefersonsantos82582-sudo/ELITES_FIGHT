@@ -17,7 +17,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       : SIDEBAR_DEFAULT_WIDTH;
   });
 
-  const { user, loading, login, error } = useAuth();
+  const { user, fbUser, loading, login, error } = useAuth();
   const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [, setLocation] = useLocation();
 
@@ -49,7 +49,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   // Mostrar skeleton enquanto o Firebase/tRPC ainda está carregando
   // Isso cobre tanto o carregamento normal quanto o retorno de redirect do Google
-  if (loading) {
+  // Também mostramos loading se o usuário está logado no Firebase mas o servidor ainda não confirmou (sincronizando)
+  if (loading || (fbUser && !user)) {
     return <DashboardLayoutSkeleton />;
   }
 
