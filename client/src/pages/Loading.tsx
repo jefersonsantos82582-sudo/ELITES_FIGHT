@@ -9,21 +9,21 @@ export default function Loading() {
 
   useEffect(() => {
     // Se o usuário já está autenticado e o loading terminou, redireciona para o dashboard
+    // IMPORTANTE: isAuthenticated depende da resposta do SERVIDOR (tRPC)
     if (isAuthenticated && !authLoading) {
-      console.log("[Loading] Autenticado! Redirecionando para dashboard...");
+      console.log("[Loading] Servidor confirmou autenticação! Redirecionando...");
       const timer = setTimeout(() => {
         setLocation("/dashboard");
-      }, 800); // Aumentado levemente para garantir sincronia
+      }, 1000); // 1 segundo de delay para garantir que o tRPC cache esteja pronto
       return () => clearTimeout(timer);
     }
   }, [isAuthenticated, authLoading, setLocation]);
 
-  // Timeout de segurança: se após 8 segundos o usuário ainda não está autenticado,
-  // redireciona para a home (provavelmente o login falhou)
+  // Timeout de segurança: aumentado para 15 segundos para conexões lentas ou cold start do servidor
   useEffect(() => {
     const timer = setTimeout(() => {
       setTimeoutReached(true);
-    }, 8000);
+    }, 15000);
     return () => clearTimeout(timer);
   }, []);
 

@@ -100,19 +100,24 @@ export function useAuth(options?: UseAuthOptions) {
         try {
           if (user) {
             setIsSyncing(true);
+            // Pegar o token imediatamente e forçar atualização
             const token = await user.getIdToken(true);
+            
+            // Garantir persistência imediata antes de qualquer chamada de API
             localStorage.setItem("firebase-token", token);
             document.cookie = `${COOKIE_NAME}=${token}; path=/; max-age=3600; SameSite=Lax`;
             
-            // Timeout de segurança: não deixar o loading travar por mais de 5s
-            const syncTimeout = setTimeout(() => {
-              if (mounted) setIsSyncing(false);
-            }, 5000);
+            console.log("[Auth] Token sincronizado, invalidando cache...");
 
+            // Invalidar e esperar o refetch do 'me' para garantir que o servidor reconheça o usuário
             await utils.auth.me.invalidate();
-            await utils.auth.me.refetch();
+            const meResult = await utils.auth.me.refetch();
             
-            clearTimeout(syncTimeout);
+            if (meResult.data) {
+              console.log("[Auth] Servidor reconheceu o usuário:", meResult.data.email);
+            } else {
+              console.warn("[Auth] Servidor ainda não reconheceu o usuário após refetch");
+            }
           } else {
             localStorage.removeItem("firebase-token");
             document.cookie = `${COOKIE_NAME}=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT`;
@@ -194,10 +199,15 @@ export function useAuth(options?: UseAuthOptions) {
         try {
           const result = await signInWithPopup(firebaseAuth, provider);
           const token = await result.user.getIdToken(true);
+          
+          // SALVAMENTO CRÍTICO: Garantir que o token esteja no navegador ANTES do redirecionamento
           localStorage.setItem("firebase-token", token);
           document.cookie = `${COOKIE_NAME}=${token}; path=/; max-age=3600; SameSite=Lax`;
+          
+          // Sincronizar com o servidor antes de ir para o loading
           await utils.auth.me.invalidate();
           await utils.auth.me.refetch();
+          
           setLocation("/loading");
         } catch (popupError: any) {
           // Popup bloqueado (muito comum em mobile) → usar redirect
