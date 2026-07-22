@@ -158,6 +158,7 @@ export const adminRouter = router({
         maxTemplates: z.number().optional(),
         maxThemes: z.number().optional(),
         maxAiUses: z.number().optional(),
+        features: z.array(z.string()).optional(),
       })
     )
     .mutation(async ({ input }) => {

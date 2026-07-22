@@ -572,6 +572,7 @@ function PlanEditor({ plan, onSave }: { plan: any; onSave: (data: any) => void }
   const [maxTemplates, setMaxTemplates] = useState(String(plan.maxTemplates));
   const [maxThemes, setMaxThemes] = useState(String(plan.maxThemes));
   const [maxAiUses, setMaxAiUses] = useState(String(plan.maxAiUses));
+  const [featuresJson, setFeaturesJson] = useState(JSON.stringify(plan.features || [], null, 2));
 
   return (
     <Card className="p-5 bg-card/50 border-border/30">
@@ -608,15 +609,34 @@ function PlanEditor({ plan, onSave }: { plan: any; onSave: (data: any) => void }
             <Input value={maxAiUses} onChange={e => setMaxAiUses(e.target.value)} className="mt-1 h-8 text-sm" type="number" />
           </div>
         </div>
+        <div>
+          <Label className="text-xs">Benefícios (JSON List)</Label>
+          <Textarea 
+            value={featuresJson} 
+            onChange={e => setFeaturesJson(e.target.value)} 
+            className="mt-1 h-24 text-xs font-mono" 
+            placeholder='["Recurso 1", "Recurso 2"]'
+          />
+        </div>
         <Button
           size="sm"
           className="w-full bg-gold-gradient text-black font-semibold"
-          onClick={() => onSave({
-            priceMonthly, priceYearly, description,
-            maxTemplates: parseInt(maxTemplates) || 0,
-            maxThemes: parseInt(maxThemes) || 0,
-            maxAiUses: parseInt(maxAiUses) || 0,
-          })}
+          onClick={() => {
+            let features = [];
+            try {
+              features = JSON.parse(featuresJson);
+            } catch (e) {
+              toast.error("JSON de benefícios inválido");
+              return;
+            }
+            onSave({
+              priceMonthly, priceYearly, description,
+              maxTemplates: parseInt(maxTemplates) || 0,
+              maxThemes: parseInt(maxThemes) || 0,
+              maxAiUses: parseInt(maxAiUses) || 0,
+              features,
+            });
+          }}
         >
           Salvar
         </Button>
