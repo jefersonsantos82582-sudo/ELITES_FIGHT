@@ -1,13 +1,28 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
 import { CheckCircle, ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
+import { trpc } from "@/lib/trpc";
+import { useAuth } from "@/_core/hooks/useAuth";
 
 export default function CheckoutSuccess() {
   const [, setLocation] = useLocation();
+  const { user } = useAuth();
+  const { data: userCheck, refetch: refetchUser } = trpc.auth.me.useQuery(undefined, {
+    refetchOnWindowFocus: false,
+  });
+
+  useEffect(() => {
+    // Tentar atualizar os dados do usuário após sucesso do pagamento
+    // O webhook do Mercado Pago pode levar alguns segundos
+    const timer = setTimeout(() => {
+      refetchUser();
+    }, 2000);
+    return () => clearTimeout(timer);
+  }, [refetchUser]);
 
   return (
     <div className="min-h-screen bg-background bg-grid-pattern flex flex-col">

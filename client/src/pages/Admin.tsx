@@ -524,7 +524,7 @@ function PlansTab() {
       <h3 className="font-semibold">Planos</h3>
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         {plans?.map(plan => (
-          <PlanEditor key={plan.id} plan={plan} onSave={(data) => updateMutation.mutate({ id: plan.id, ...data })} />
+          <PlanEditor key={plan.id} plan={plan} onSave={(data) => updateMutation.mutate({ id: plan.id, code: plan.code, ...data })} />
         ))}
       </div>
     </div>

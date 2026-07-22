@@ -291,6 +291,7 @@ function PlanDialog({ open, onOpenChange, plan }: any) {
     if (!plan) return;
     updateMutation.mutate({
       id: plan.id,
+      code: plan.code,
       priceMonthly,
       priceYearly,
       description,

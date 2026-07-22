@@ -68,12 +68,15 @@ export const adminRouter = router({
         categoryId: input.categoryId,
         name: input.name,
         slug: input.slug,
-        description: input.description || undefined,
+        description: input.description ?? null,
         plan: input.plan,
         columns: input.columns,
+        sampleRows: [],
         headerColor: input.headerColor || "#D4AF37",
         accentColor: input.accentColor || "#1A1A1A",
         isActive: true,
+        displayOrder: 0,
+        isFeatured: false,
       });
     }),
 
@@ -123,7 +126,13 @@ export const adminRouter = router({
       })
     )
     .mutation(async ({ input }) => {
-      return db.createCategory(input);
+      return db.createCategory({
+        name: input.name,
+        slug: input.slug,
+        displayOrder: input.displayOrder,
+        description: input.description ?? null,
+        icon: input.icon ?? null,
+      });
     }),
 
   /**
@@ -142,6 +151,7 @@ export const adminRouter = router({
     .input(
       z.object({
         id: z.number(),
+        code: z.enum(["free", "pro", "elite"]),
         priceMonthly: z.string().optional(),
         priceYearly: z.string().optional(),
         description: z.string().optional(),
@@ -151,8 +161,8 @@ export const adminRouter = router({
       })
     )
     .mutation(async ({ input }) => {
-      const { id, ...data } = input;
-      return db.updatePlan(id, data);
+      const { id, code, ...data } = input;
+      return db.updatePlan(code, data);
     }),
 
   /**

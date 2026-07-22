@@ -93,7 +93,7 @@ export default function Dashboard() {
           userPhotoUrl={overview.userPhotoUrl}
           plan={overview.plan}
           planName={overview.planName}
-          planExpiresAt={overview.planExpiresAt}
+          planExpiresAt={overview.planExpiresAt ? (typeof overview.planExpiresAt === 'string' ? overview.planExpiresAt : (overview.planExpiresAt as Date).toISOString()) : null}
           planDescription={overview.planDescription}
         />
 

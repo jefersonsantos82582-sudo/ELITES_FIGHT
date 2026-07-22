@@ -13,15 +13,17 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 
-// Configurar persistência local explicitamente
+// Configurar persistência local ANTES de qualquer operação
+// browserLocalPersistence é a mais adequada para produção no Render
+// Isso garante que a sessão persiste ao recarregar a página
 setPersistence(auth, browserLocalPersistence).catch((err) => {
   console.error("Erro ao configurar persistência do Firebase:", err);
 });
 
 export const googleProvider = new GoogleAuthProvider();
-// Adicionar escopos se necessário, mas o padrão geralmente é suficiente
 googleProvider.addScope('profile');
 googleProvider.addScope('email');
+// Configurar hint para login - isso ajuda o Firebase a saber que é um redirect
 googleProvider.setCustomParameters({
-  prompt: 'select_account'
+  prompt: 'select_account',
 });

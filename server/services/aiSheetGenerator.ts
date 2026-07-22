@@ -168,7 +168,6 @@ Gere ${request.rowCount || 5} linhas de dados de exemplo.`;
             content: userMessage,
           },
         ],
-        temperature: 0.7,
         max_tokens: 2000,
       });
       content = response.choices?.[0]?.message?.content as string;

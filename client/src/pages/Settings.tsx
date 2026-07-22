@@ -72,7 +72,7 @@ export default function Settings() {
                 {overview?.unlimitedSheets ? "Planilhas ilimitadas" : "1 planilha por mês"}
               </span>
             </div>
-            <a href="/#planos">
+            <a href={user?.plan === 'free' ? '/checkout?plan=pro' : '/checkout?plan=elite'}>
               <Button variant="outline" size="sm" className="border-primary/30 text-primary">
                 <Crown className="w-3.5 h-3.5 mr-1.5" />
                 Fazer upgrade

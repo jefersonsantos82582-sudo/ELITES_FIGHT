@@ -81,6 +81,13 @@ export default function MercadoPagoCheckout({
                 console.error("Erro no Brick:", error);
                 onError?.(new Error(error.message || "Erro ao carregar checkout"));
               },
+              onSuccess: () => {
+                console.log("Pagamento concluído com sucesso");
+                onSuccess?.();
+              },
+              onPending: () => {
+                console.log("Pagamento pendente");
+              },
             },
           };
           

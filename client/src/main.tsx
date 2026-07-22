@@ -30,6 +30,7 @@ const redirectToLoginIfUnauthorized = (error: unknown) => {
   
   console.warn("Usuário não autorizado, limpando tokens...");
   localStorage.removeItem("firebase-token");
+  // Não redirecionar automaticamente - o useAuth hook cuida disso
 };
 
 queryClient.getQueryCache().subscribe(event => {
