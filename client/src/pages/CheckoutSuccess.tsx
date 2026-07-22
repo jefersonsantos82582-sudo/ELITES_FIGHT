@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
-import { CheckCircle, ArrowRight } from "lucide-react";
+import { CheckCircle, ArrowRight, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import Navbar from "@/components/Navbar";
@@ -11,18 +11,29 @@ import { useAuth } from "@/_core/hooks/useAuth";
 export default function CheckoutSuccess() {
   const [, setLocation] = useLocation();
   const { user } = useAuth();
-  const { data: userCheck, refetch: refetchUser } = trpc.auth.me.useQuery(undefined, {
-    refetchOnWindowFocus: false,
-  });
+  const utils = trpc.useUtils();
+  const [isRefreshing, setIsRefreshing] = useState(true);
 
   useEffect(() => {
-    // Tentar atualizar os dados do usuário após sucesso do pagamento
-    // O webhook do Mercado Pago pode levar alguns segundos
-    const timer = setTimeout(() => {
-      refetchUser();
-    }, 2000);
-    return () => clearTimeout(timer);
-  }, [refetchUser]);
+    // Invalidar todos os caches relevantes para refletir o novo plano
+    // O webhook do Mercado Pago pode levar alguns segundos para processar
+    const refreshData = async () => {
+      setIsRefreshing(true);
+      try {
+        // Primeira tentativa após 2 segundos
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        await utils.auth.me.invalidate();
+        await utils.dashboard.overview.invalidate();
+        await utils.plans.list.invalidate();
+      } catch (err) {
+        console.error("[CheckoutSuccess] Erro ao atualizar dados:", err);
+      } finally {
+        setIsRefreshing(false);
+      }
+    };
+
+    void refreshData();
+  }, [utils]);
 
   return (
     <div className="min-h-screen bg-background bg-grid-pattern flex flex-col">
@@ -34,15 +45,33 @@ export default function CheckoutSuccess() {
               <CheckCircle className="w-10 h-10 text-green-500" />
             </div>
             <h1 className="text-3xl font-bold mb-2">Pagamento Confirmado!</h1>
-            <p className="text-muted-foreground mb-8">
+            <p className="text-muted-foreground mb-4">
               Seu plano foi atualizado com sucesso. Você já pode aproveitar todos os recursos premium.
             </p>
+
+            {isRefreshing && (
+              <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground mb-6">
+                <Loader2 className="w-4 h-4 animate-spin" />
+                Atualizando seu plano...
+              </div>
+            )}
+
             <Button 
               className="w-full bg-gold-gradient text-black font-semibold"
               onClick={() => setLocation("/dashboard")}
+              disabled={isRefreshing}
             >
-              Ir para o Dashboard
-              <ArrowRight className="w-4 h-4 ml-2" />
+              {isRefreshing ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Aguarde...
+                </>
+              ) : (
+                <>
+                  Ir para o Dashboard
+                  <ArrowRight className="w-4 h-4 ml-2" />
+                </>
+              )}
             </Button>
           </Card>
         </div>

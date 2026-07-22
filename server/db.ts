@@ -107,7 +107,17 @@ export async function getAllUsers() {
 export async function updateUserPlan(userId: number, plan: "free" | "pro" | "elite", planExpiresAt?: Date) {
   const db = await getDb();
   if (!db) return;
-  await db.update(users).set({ plan, updatedAt: new Date(), planExpiresAt }).where(eq(users.id, userId));
+
+  // Buscar os benefícios do plano para atualizar os créditos de IA do usuário
+  const planInfo = await getPlanByCode(plan);
+  const aiUsesLeft = planInfo?.maxAiUses ?? 0;
+
+  await db.update(users).set({ 
+    plan, 
+    aiUsesLeft,
+    updatedAt: new Date(), 
+    planExpiresAt 
+  }).where(eq(users.id, userId));
 }
 
 export async function downgradeExpiredPlans() {

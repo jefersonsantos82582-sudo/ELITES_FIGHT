@@ -19,7 +19,13 @@ export default function Home() {
   const handlePlanAction = async (planCode: string) => {
     try {
       if (!user) {
-        await login("/dashboard");
+        if (planCode === "free") {
+          // Para plano free, logar e ir ao dashboard
+          await login("/dashboard");
+        } else {
+          // Para planos pagos, salvar o plano e redirecionar para checkout após login
+          await login(`/checkout?plan=${planCode}`);
+        }
         return;
       }
 

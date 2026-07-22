@@ -19,10 +19,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const { user, loading, login, error } = useAuth();
   const [isLoggingIn, setIsLoggingIn] = useState(false);
 
-  // Verificar se há um redirect do Google em andamento (sessionStorage indica que o usuário
-  // clicou em "Entrar com Google" e foi redirecionado para o Google antes de voltar)
-  const isRedirectPending = Boolean(sessionStorage.getItem("auth-redirect-path"));
-
   useEffect(() => {
     localStorage.setItem(SIDEBAR_WIDTH_KEY, sidebarWidth.toString());
   }, [sidebarWidth]);
@@ -38,8 +34,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     }
   };
 
-  // Mostrar skeleton enquanto carrega ou enquanto o redirect do Google está sendo processado
-  if (loading || isRedirectPending) {
+  // Mostrar skeleton enquanto o Firebase/tRPC ainda está carregando
+  // Isso cobre tanto o carregamento normal quanto o retorno de redirect do Google
+  if (loading) {
     return <DashboardLayoutSkeleton />;
   }
 

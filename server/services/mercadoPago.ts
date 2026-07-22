@@ -102,6 +102,12 @@ class MercadoPagoService {
       },
       auto_return: 'approved',
       external_reference: `user_${userId}_plan_${planCode}_${Date.now()}`,
+      // Configurações de pagamento para garantir suporte a Pix e Cartão
+      payment_methods: {
+        excluded_payment_methods: [],
+        excluded_payment_types: [],
+        installments: 12,
+      },
       // No Render ou produção, a URL do webhook deve ser acessível publicamente
       notification_url: process.env.RENDER_EXTERNAL_URL 
         ? `${process.env.RENDER_EXTERNAL_URL}/api/webhooks/mercadopago`
