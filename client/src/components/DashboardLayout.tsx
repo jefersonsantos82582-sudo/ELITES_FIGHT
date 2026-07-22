@@ -47,10 +47,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     }
   };
 
-  // Mostrar skeleton enquanto o Firebase/tRPC ainda está carregando
-  // Isso cobre tanto o carregamento normal quanto o retorno de redirect do Google
-  // Também mostramos loading se o usuário está logado no Firebase mas o servidor ainda não confirmou (sincronizando)
-  if (loading || (fbUser && !user)) {
+  // Mostrar skeleton apenas enquanto a autenticação básica (Firebase + primeira checagem do servidor) está ocorrendo
+  if (loading) {
     return <DashboardLayoutSkeleton />;
   }
 

@@ -88,14 +88,11 @@ export default function Checkout() {
     }
   };
 
-  // Se o Firebase está carregando OU se o usuário está logado no Firebase mas o servidor ainda não sincronizou
-  if (authLoading || (fbUser && !user)) {
+  // Mostrar carregamento apenas enquanto a autenticação básica está ocorrendo
+  if (authLoading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background">
-        <div className="text-center">
-          <Loader2 className="h-8 w-8 animate-spin text-primary mx-auto mb-4" />
-          <p className="text-sm text-muted-foreground">Sincronizando sua conta...</p>
-        </div>
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
       </div>
     );
   }

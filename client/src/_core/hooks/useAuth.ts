@@ -214,8 +214,9 @@ export function useAuth(options?: UseAuthOptions) {
     }
   }, [utils, setLocation]);
 
-  // loading é true enquanto o Firebase não inicializou OU enquanto o tRPC está buscando o usuário
-  const loading = fbLoading || (fbUser !== null && meQuery.isLoading);
+  // loading é true enquanto o Firebase não inicializou.
+  // Se o fbUser existe, meQuery.isLoading indica se estamos sincronizando com o servidor.
+  const loading = fbLoading || (fbUser !== null && meQuery.isInitialLoading);
   const user = meQuery.data ?? null;
 
   return useMemo(() => ({
