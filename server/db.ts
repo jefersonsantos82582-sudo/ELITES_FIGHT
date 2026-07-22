@@ -205,6 +205,12 @@ export async function getAllTemplates(): Promise<Template[]> {
   return db.select().from(templates).where(eq(templates.isActive, true)).orderBy(templates.displayOrder);
 }
 
+export async function getAllTemplatesAdmin(): Promise<Template[]> {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(templates).orderBy(templates.displayOrder);
+}
+
 export async function getFeaturedTemplates(): Promise<Template[]> {
   const db = await getDb();
   if (!db) return [];
@@ -269,6 +275,12 @@ export async function countGeneratedSheetsSince(userId: number, since: Date): Pr
   return result[0]?.count ?? 0;
 }
 
+export async function getAllGeneratedSheets(): Promise<GeneratedSheet[]> {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(generatedSheets).orderBy(desc(generatedSheets.createdAt));
+}
+
 // ==================== Plans ====================
 
 export async function getPlanByCode(code: "free" | "pro" | "elite"): Promise<Plan | undefined> {
@@ -303,6 +315,18 @@ export async function getAllSiteSettings(): Promise<SiteSetting[]> {
   const db = await getDb();
   if (!db) return [];
   return db.select().from(siteSettings);
+}
+
+export async function getAllSettings(): Promise<SiteSetting[]> {
+  return getAllSiteSettings();
+}
+
+export async function getSetting(key: string): Promise<SiteSetting | undefined> {
+  return getSiteSetting(key);
+}
+
+export async function upsertSetting(key: string, value: unknown): Promise<void> {
+  return upsertSiteSetting(key, value);
 }
 
 export async function upsertSiteSetting(key: string, value: unknown): Promise<void> {

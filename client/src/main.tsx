@@ -8,7 +8,17 @@ import App from "./App";
 import "./index.css";
 import { auth } from "@/lib/firebase";
 
-const queryClient = new QueryClient();
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      retry: (failureCount, error: any) => {
+        // Não repetir se for erro de autenticação
+        if (error?.message === UNAUTHED_ERR_MSG) return false;
+        return failureCount < 3;
+      },
+    },
+  },
+});
 
 const redirectToLoginIfUnauthorized = (error: unknown) => {
   if (!(error instanceof TRPCClientError)) return;
@@ -18,9 +28,8 @@ const redirectToLoginIfUnauthorized = (error: unknown) => {
 
   if (!isUnauthorized) return;
   
-  // No Firebase, o redirecionamento ou abertura do popup é tratado pelo hook useAuth
-  // ou manualmente nos componentes. Aqui apenas limpamos o estado se necessário.
-  console.warn("Usuário não autorizado, redirecionando para login...");
+  console.warn("Usuário não autorizado, limpando tokens...");
+  localStorage.removeItem("firebase-token");
 };
 
 queryClient.getQueryCache().subscribe(event => {
@@ -52,15 +61,15 @@ const trpcClient = trpc.createClient({
       transformer: superjson,
       async headers() {
         try {
-          // Pegar o token atual do Firebase
+          // 1. Tentar pegar o token diretamente do Firebase (mais seguro)
           const user = auth.currentUser;
           if (user) {
             const token = await user.getIdToken();
             return { Authorization: `Bearer ${token}` };
           }
           
-          // Fallback para o token no sessionStorage (caso o Firebase ainda não tenha carregado o currentUser)
-          const fbToken = sessionStorage.getItem("firebase-token");
+          // 2. Fallback para o token no localStorage (persistência entre reloads)
+          const fbToken = localStorage.getItem("firebase-token");
           if (fbToken) {
             return { Authorization: `Bearer ${fbToken}` };
           }

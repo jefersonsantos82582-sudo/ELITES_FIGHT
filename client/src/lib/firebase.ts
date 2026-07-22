@@ -1,5 +1,5 @@
 import { initializeApp } from "firebase/app";
-import { getAuth, GoogleAuthProvider } from "firebase/auth";
+import { getAuth, GoogleAuthProvider, browserLocalPersistence, setPersistence } from "firebase/auth";
 
 const firebaseConfig = {
   apiKey: "AIzaSyBSku-8IuEJkHz_rMGYmZepZLetNQP6Hok",
@@ -12,4 +12,16 @@ const firebaseConfig = {
 
 const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
+
+// Configurar persistência local explicitamente
+setPersistence(auth, browserLocalPersistence).catch((err) => {
+  console.error("Erro ao configurar persistência do Firebase:", err);
+});
+
 export const googleProvider = new GoogleAuthProvider();
+// Adicionar escopos se necessário, mas o padrão geralmente é suficiente
+googleProvider.addScope('profile');
+googleProvider.addScope('email');
+googleProvider.setCustomParameters({
+  prompt: 'select_account'
+});
