@@ -293,7 +293,14 @@ export async function getPlanByCode(code: "free" | "pro" | "elite"): Promise<Pla
 export async function getAllPlans(): Promise<Plan[]> {
   const db = await getDb();
   if (!db) return [];
-  return db.select().from(plans).where(eq(plans.isActive, true)).orderBy(plans.displayOrder);
+  const allPlans = await db.select().from(plans).where(eq(plans.isActive, true)).orderBy(plans.displayOrder);
+  // Deduplicar por código para evitar planos repetidos caso haja inserções duplicadas no banco
+  const seen = new Set<string>();
+  return allPlans.filter((plan) => {
+    if (seen.has(plan.code)) return false;
+    seen.add(plan.code);
+    return true;
+  });
 }
 
 export async function updatePlan(code: "free" | "pro" | "elite", data: Partial<Omit<Plan, "id" | "code" | "createdAt">>) {

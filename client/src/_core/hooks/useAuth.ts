@@ -34,6 +34,8 @@ export function useAuth(options?: UseAuthOptions) {
   const [sessionError, setSessionError] = useState<Error | null>(null);
   const loginPromiseRef = useRef<Promise<void> | null>(null);
   const redirectResultProcessed = useRef(false);
+  // Armazena o destino do redirect para usar após o retorno do Google
+  const pendingRedirectPath = useRef<string | null>(null);
 
   const meQuery = trpc.auth.me.useQuery(undefined, {
     retry: false,
@@ -44,25 +46,34 @@ export function useAuth(options?: UseAuthOptions) {
   // ===== PROCESSAR REDIRECT RESULT =====
   useEffect(() => {
     if (redirectResultProcessed.current) return;
-    
+
     async function processRedirectResult() {
       try {
         const result = await getRedirectResult(firebaseAuth);
         if (result && result.user) {
           console.log("[Auth] Login via redirect bem-sucedido");
+          // Forçar refresh do token para garantir que está válido
           const token = await result.user.getIdToken(true);
           localStorage.setItem("firebase-token", token);
-          await utils.auth.me.invalidate();
-          setLocation("/dashboard");
           redirectResultProcessed.current = true;
+
+          // Aguardar a invalidação do cache e redirecionar
+          await utils.auth.me.invalidate();
+
+          // Recuperar o destino salvo antes do redirect ou usar /dashboard
+          const savedPath = sessionStorage.getItem("auth-redirect-path") || "/dashboard";
+          sessionStorage.removeItem("auth-redirect-path");
+          setLocation(savedPath);
         }
       } catch (error: any) {
         console.error("[Auth] Erro ao processar redirect result:", error?.code, error?.message);
+      } finally {
+        redirectResultProcessed.current = true;
       }
     }
 
     processRedirectResult();
-  }, [setLocation, utils]);
+  }, []); // Sem dependências para rodar apenas uma vez na montagem
 
   // ===== LISTENER PRINCIPAL DE AUTENTICAÇÃO =====
   useEffect(() => {
@@ -118,13 +129,13 @@ export function useAuth(options?: UseAuthOptions) {
     const loginPromise = (async () => {
       try {
         await setPersistence(firebaseAuth, browserLocalPersistence);
-        
+
         const provider = new GoogleAuthProvider();
         provider.addScope('profile');
         provider.addScope('email');
         provider.setCustomParameters({ prompt: 'select_account' });
 
-        // Tentar popup primeiro (mais rápido)
+        // Tentar popup primeiro (mais rápido em desktop)
         try {
           const result = await signInWithPopup(firebaseAuth, provider);
           const token = await result.user.getIdToken(true);
@@ -132,8 +143,10 @@ export function useAuth(options?: UseAuthOptions) {
           await utils.auth.me.invalidate();
           setLocation(customRedirect);
         } catch (popupError: any) {
-          // Se popup falhar (bloqueado ou sandbox), usar redirect
+          // Se popup falhar (bloqueado pelo navegador mobile/sandbox), usar redirect
           console.warn("[Auth] Popup falhou, usando redirect:", popupError?.code);
+          // Salvar o destino para recuperar após o redirect do Google
+          sessionStorage.setItem("auth-redirect-path", customRedirect);
           await signInWithRedirect(firebaseAuth, provider);
         }
       } catch (error: any) {
