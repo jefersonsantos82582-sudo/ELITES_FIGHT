@@ -112,39 +112,19 @@ export default function Checkout() {
       <div className="min-h-screen bg-background bg-grid-pattern flex flex-col">
         <Navbar />
         <div className="flex-1 py-12 md:py-20">
-          <div className="container max-w-2xl">
+          <div className="container max-w-2xl text-center">
+            <Loader2 className="h-10 w-10 animate-spin text-primary mx-auto mb-4" />
+            <h1 className="text-2xl font-bold mb-2">Verificando sua conta...</h1>
+            <p className="text-muted-foreground mb-8">
+              Estamos preparando tudo para o seu upgrade no plano <strong>{planInfo?.name || planCode.toUpperCase()}</strong>.
+            </p>
             <Button
-              variant="ghost"
-              onClick={() => setLocation("/#planos")}
-              className="mb-8"
+              variant="outline"
+              onClick={handleLogin}
+              disabled={isLoggingIn}
             >
-              <ArrowLeft className="w-4 h-4 mr-2" />
-              Voltar aos planos
+              {isLoggingIn ? "Entrando..." : "Clique aqui se não for redirecionado"}
             </Button>
-
-            <Card className="p-8 bg-card border-border/30 text-center">
-              <div className="flex h-16 w-16 items-center justify-center rounded-full bg-primary/10 mx-auto mb-6">
-                <LogIn className="h-8 w-8 text-primary" />
-              </div>
-              <h1 className="text-2xl font-bold mb-2">Entre para continuar</h1>
-              <p className="text-muted-foreground mb-8">
-                Faça login com sua conta Google para assinar o plano{" "}
-                <strong>{planInfo?.name || planCode.toUpperCase()}</strong> por{" "}
-                <strong>R$ {planInfo?.price}/mês</strong>.
-              </p>
-              <Button
-                onClick={handleLogin}
-                disabled={isLoggingIn}
-                size="lg"
-                className="w-full bg-gold-gradient font-bold text-black"
-              >
-                {isLoggingIn ? (
-                  <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Entrando...</>
-                ) : (
-                  <><LogIn className="mr-2 h-4 w-4" /> Entrar com Google</>
-                )}
-              </Button>
-            </Card>
           </div>
         </div>
         <Footer />
