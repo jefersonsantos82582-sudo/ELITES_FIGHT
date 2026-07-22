@@ -11,6 +11,7 @@ import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { trpc } from "@/lib/trpc";
+import { useLocation } from "wouter";
 
 export default function Home() {
   const { user, login, loading: authLoading } = useAuth();
