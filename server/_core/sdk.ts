@@ -111,7 +111,8 @@ class SDKServer {
 
     if (!idToken) {
       const cookies = this.parseCookies(req.headers.cookie);
-      idToken = cookies.get("firebase-token");
+      // Tentar ambos os nomes para garantir compatibilidade
+      idToken = cookies.get("app_session_id") || cookies.get("firebase-token");
     }
 
     if (!idToken) {

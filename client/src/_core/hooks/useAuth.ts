@@ -134,7 +134,11 @@ export function useAuth(options?: UseAuthOptions) {
   // ===== REDIRECIONAR PARA DASHBOARD APÓS LOGIN =====
   useEffect(() => {
     if (redirectToDashboardOnLogin && meQuery.data && !meQuery.isLoading) {
-      setLocation("/dashboard");
+      // Pequeno delay para garantir que o estado do tRPC e do Firebase estejam sincronizados
+      const timer = setTimeout(() => {
+        setLocation("/dashboard");
+      }, 100);
+      return () => clearTimeout(timer);
     }
   }, [meQuery.data, meQuery.isLoading, redirectToDashboardOnLogin, setLocation]);
 

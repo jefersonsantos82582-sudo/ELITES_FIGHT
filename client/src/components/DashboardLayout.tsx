@@ -27,10 +27,14 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   // Garantir redirecionamento se o usuário estiver logado mas a página não mudar
   useEffect(() => {
-    if (user && window.location.pathname === "/dashboard") {
-      console.log("[DashboardLayout] Usuário detectado no dashboard");
+    if (user) {
+      const path = window.location.pathname;
+      // Se estiver na raiz ou em páginas que exigem login mas mostram o card de "Entre para continuar"
+      if (path === "/" || path === "/login") {
+        setLocation("/dashboard");
+      }
     }
-  }, [user]);
+  }, [user, setLocation]);
 
   const handleLogin = async () => {
     setIsLoggingIn(true);
