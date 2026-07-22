@@ -216,16 +216,19 @@ export default function Dashboard() {
                   <p className="text-2xl font-bold mb-1">R$ {plan.priceMonthly ?? "0"}</p>
                   <p className="text-xs text-muted-foreground mb-4 line-clamp-2">{plan.description}</p>
                 </div>
-                <Link href={plan.code === "free" ? "/dashboard" : `/checkout?plan=${plan.code}`}>
-                  <Button 
-                    variant={overview?.plan === plan.code ? "outline" : "default"} 
-                    size="sm" 
-                    className={`w-full ${overview?.plan !== plan.code ? "bg-gold-gradient text-black font-semibold" : ""}`}
-                    disabled={overview?.plan === plan.code}
-                  >
-                    {overview?.plan === plan.code ? "Plano Atual" : "Assinar Agora"}
-                  </Button>
-                </Link>
+                <Button 
+                  variant={overview?.plan === plan.code ? "outline" : "default"} 
+                  size="sm" 
+                  className={`w-full ${overview?.plan !== plan.code ? "bg-gold-gradient text-black font-semibold" : ""}`}
+                  disabled={overview?.plan === plan.code}
+                  onClick={() => {
+                    if (plan.code !== "free") {
+                      window.location.href = `/checkout?plan=${plan.code}`;
+                    }
+                  }}
+                >
+                  {overview?.plan === plan.code ? "Plano Atual" : "Assinar Agora"}
+                </Button>
               </Card>
             ))}
           </div>

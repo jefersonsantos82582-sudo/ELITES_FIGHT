@@ -75,7 +75,7 @@ export default function Home() {
             <Button 
               size="lg" 
               className="w-full sm:w-auto bg-gold-gradient text-black font-semibold text-base h-12 px-8"
-              onClick={() => handlePlanAction("free")}
+              onClick={() => setLocation(user ? "/dashboard" : "/loading")}
             >
               Começar Agora
               <ArrowRight className="w-4 h-4 ml-2" />
@@ -216,17 +216,11 @@ export default function Home() {
                     ))}
                   </ul>
 
-                  <Button 
-                    className={`w-full ${
-                      isPro || isElite 
-                        ? "bg-gold-gradient text-black font-semibold hover:opacity-90" 
-                        : "border-border/50"
-                    }`}
-                    variant={plan.code === "free" ? "outline" : "default"}
-                    onClick={() => handlePlanAction(plan.code)}
-                  >
-                    {plan.code === "free" ? "Começar agora" : "Fazer upgrade"}
-                  </Button>
+                  <div className="pt-4 border-t border-border/10 text-center">
+                    <p className="text-[10px] text-muted-foreground uppercase tracking-widest font-bold">
+                      Disponível no Dashboard
+                    </p>
+                  </div>
                 </Card>
               );
             })}
