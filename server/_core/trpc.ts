@@ -32,14 +32,19 @@ export const adminProcedure = t.procedure.use(
     const { ctx, next } = opts;
     
     // Verificar chave de acesso via Header ou Cookie
-    const adminKey = ctx.req.headers["x-admin-key"] || ctx.req.cookies["admin_key"];
-    const VALID_ADMIN_KEY = "A2M8O9J3@";
+    const adminKeyFromHeader = ctx.req.headers["x-admin-key"];
+    const adminKeyFromCookie = ctx.req.cookies["admin_key"];
+    const adminKey = adminKeyFromHeader || adminKeyFromCookie;
+    
+    // Validar chave de forma segura usando variável de ambiente
+    const VALID_ADMIN_KEY = process.env.ADMIN_KEY || "admin_key_not_configured";
+    const isValidKey = adminKey && adminKey === VALID_ADMIN_KEY && adminKey.length > 8;
     
     // Lista de e-mails autorizados (pode ser expandida via DB depois)
     const AUTHORIZED_ADMINS = ["jefersonsantos82582@gmail.com"];
 
     const isEmailAuthorized = ctx.user && AUTHORIZED_ADMINS.includes(ctx.user.email);
-    const hasAccess = isEmailAuthorized || adminKey === VALID_ADMIN_KEY;
+    const hasAccess = isEmailAuthorized || isValidKey;
 
     if (!hasAccess) {
       throw new TRPCError({ code: "FORBIDDEN", message: NOT_ADMIN_ERR_MSG });

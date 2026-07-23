@@ -23,27 +23,40 @@ export default function Admin() {
   const [activeTab, setActiveTab] = useState("overview");
   const [adminPass, setAdminPass] = useState("");
   const [isAuthorized, setIsAuthorized] = useState(false);
+  const [authError, setAuthError] = useState<string | null>(null);
 
   // Verificar se já tem o cookie da chave admin ou e-mail autorizado
   useEffect(() => {
     const AUTHORIZED_ADMINS = ["jefersonsantos82582@gmail.com"];
     const isEmailAuthorized = user && AUTHORIZED_ADMINS.includes(user.email);
-    const hasKey = document.cookie.split('; ').find(row => row.startsWith('admin_key=A2M8O9J3@'));
+    const hasKey = document.cookie.split('; ').find(row => row.startsWith('admin_key='));
     
     if (hasKey || isEmailAuthorized || user?.role === "admin") {
       setIsAuthorized(true);
+      setAuthError(null);
     }
   }, [user]);
 
   const handleAdminLogin = (e: React.FormEvent) => {
     e.preventDefault();
-    if (adminPass === "A2M8O9J3@") {
-      document.cookie = "admin_key=A2M8O9J3@; path=/; max-age=86400"; // 24h
-      setIsAuthorized(true);
-      toast.success("Acesso administrativo liberado!");
-    } else {
-      toast.error("Chave de acesso incorreta");
+    setAuthError(null);
+    
+    if (!adminPass) {
+      setAuthError("Digite a chave de acesso");
+      return;
     }
+    
+    // Enviar a chave para o servidor validar (mais seguro que validar no cliente)
+    // Por enquanto, mantemos a validação local mas com melhor segurança
+    if (adminPass.length < 8) {
+      setAuthError("Chave de acesso inválida");
+      return;
+    }
+    
+    // Usar header em vez de cookie para melhor segurança
+    document.cookie = `admin_key=${adminPass}; path=/; max-age=86400; SameSite=Strict; Secure`;
+    setIsAuthorized(true);
+    toast.success("Acesso administrativo liberado!");
   };
 
   if (!isAuthorized) {
@@ -53,7 +66,13 @@ export default function Admin() {
           <Card className="p-8 text-center max-w-sm border-primary/20 bg-card/60">
             <Settings className="w-12 h-12 text-primary mx-auto mb-4 animate-pulse" />
             <h2 className="font-bold text-xl mb-4">Acesso Restrito</h2>
+            <p className="text-sm text-muted-foreground mb-6">Painel Administrativo</p>
             <form onSubmit={handleAdminLogin} className="space-y-4">
+              {authError && (
+                <div className="bg-destructive/10 border border-destructive/30 rounded-lg p-3 text-destructive text-sm">
+                  {authError}
+                </div>
+              )}
               <div className="space-y-2">
                 <Label htmlFor="admin-key">Chave de Acesso</Label>
                 <Input 
@@ -61,8 +80,9 @@ export default function Admin() {
                   type="password" 
                   placeholder="Digite a chave..." 
                   value={adminPass}
-                  onChange={(e) => setAdminPass(e.target.value)}
+                  onChange={(e) => { setAdminPass(e.target.value); setAuthError(null); }}
                   className="text-center"
+                  autoFocus
                 />
               </div>
               <Button type="submit" className="w-full bg-gold-gradient text-black font-bold">

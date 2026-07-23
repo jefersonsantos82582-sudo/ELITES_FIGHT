@@ -47,7 +47,12 @@ export default function Generator() {
       toast.success("Planilha gerada com sucesso!");
     },
     onError: (err) => {
-      toast.error(err.message || "Erro ao gerar planilha");
+      // Melhor tratamento de erros de autenticação
+      if (err.message?.includes("login") || err.message?.includes("10001")) {
+        toast.error("Sua sessão expirou. Por favor, faça login novamente.");
+      } else {
+        toast.error(err.message || "Erro ao gerar planilha");
+      }
     },
   });
 
@@ -118,6 +123,23 @@ export default function Generator() {
     setSelectedTemplateId("");
     setGenerated(null);
   };
+
+  // Mostrar mensagem se não estiver autenticado
+  if (!authLoading && !user) {
+    return (
+      <DashboardLayout>
+        <div className="flex items-center justify-center min-h-[60vh]">
+          <Card className="p-8 text-center max-w-sm border-primary/20 bg-card/60">
+            <AlertCircle className="w-12 h-12 text-destructive mx-auto mb-4" />
+            <h2 className="font-bold text-xl mb-2">Autenticação Necessária</h2>
+            <p className="text-sm text-muted-foreground mb-6">
+              Você precisa estar logado para gerar planilhas.
+            </p>
+          </Card>
+        </div>
+      </DashboardLayout>
+    );
+  }
 
   return (
     <DashboardLayout>
@@ -321,106 +343,80 @@ export default function Generator() {
                       <span className="font-medium text-right">{selectedTemplate.name}</span>
                     </div>
                     <div className="flex justify-between">
+                      <span className="text-muted-foreground">Categoria:</span>
+                      <span className="font-medium text-right">{selectedTemplate.plan}</span>
+                    </div>
+                    <div className="flex justify-between">
                       <span className="text-muted-foreground">Nome:</span>
                       <span className="font-medium text-right truncate ml-2">{customName || "—"}</span>
                     </div>
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Cor cabeçalho:</span>
-                      <div className="flex items-center gap-2">
-                        <div className="w-4 h-4 rounded" style={{ backgroundColor: headerColor }} />
-                        <span className="font-medium text-xs">{headerColor}</span>
-                      </div>
+                  </div>
+
+                  {/* Color preview */}
+                  <div className="space-y-2">
+                    <div className="text-xs text-muted-foreground">Cores:</div>
+                    <div className="flex gap-2">
+                      <div
+                        className="flex-1 h-8 rounded border border-border/30"
+                        style={{ backgroundColor: headerColor }}
+                        title="Cabeçalho"
+                      />
+                      <div
+                        className="flex-1 h-8 rounded border border-border/30"
+                        style={{ backgroundColor: accentColor }}
+                        title="Destaque"
+                      />
                     </div>
                   </div>
 
-                  {/* Column preview table */}
-                  <div className="border border-border/30 rounded-lg overflow-hidden">
-                    <div className="text-xs font-semibold px-3 py-2 border-b border-border/30 bg-muted/30">
-                      Colunas ({(selectedTemplate.columns as any[]).length})
+                  {/* Generate button */}
+                  {generated ? (
+                    <div className="space-y-3">
+                      <div className="bg-primary/10 border border-primary/30 rounded-lg p-4 text-center">
+                        <Check className="w-8 h-8 text-primary mx-auto mb-2" />
+                        <p className="text-sm font-semibold text-primary">Planilha gerada!</p>
+                      </div>
+                      <Button
+                        asChild
+                        className="w-full bg-gold-gradient text-black font-semibold"
+                      >
+                        <a href={generated.fileUrl} download={generated.fileName}>
+                          <Download className="w-4 h-4 mr-2" />
+                          Baixar
+                        </a>
+                      </Button>
+                      <Button
+                        variant="outline"
+                        className="w-full"
+                        onClick={() => setGenerated(null)}
+                      >
+                        Gerar outra
+                      </Button>
                     </div>
-                    <div className="max-h-48 overflow-y-auto">
-                      <table className="w-full text-xs">
-                        <thead>
-                          <tr style={{ backgroundColor: headerColor }}>
-                            {(selectedTemplate.columns as any[]).map((col: any, i: number) => (
-                              <th
-                                key={i}
-                                className="px-2 py-1.5 text-left font-semibold text-white whitespace-nowrap"
-                                style={{ minWidth: col.width ? `${col.width * 3}px` : "60px" }}
-                              >
-                                {col.name}
-                              </th>
-                            ))}
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {(selectedTemplate.sampleRows as any[][] || []).slice(0, 3).map((row: any[], ri: number) => (
-                            <tr key={ri} className="border-b border-border/20">
-                              {(selectedTemplate.columns as any[]).map((_: any, ci: number) => (
-                                <td key={ci} className="px-2 py-1.5 text-muted-foreground whitespace-nowrap">
-                                  {row[ci] !== undefined ? String(row[ci]) : "—"}
-                                </td>
-                              ))}
-                            </tr>
-                          ))}
-                          {(!selectedTemplate.sampleRows || (selectedTemplate.sampleRows as any[]).length === 0) && (
-                            <tr>
-                              <td colSpan={(selectedTemplate.columns as any[]).length} className="px-2 py-3 text-center text-muted-foreground/50">
-                                Dados de exemplo aparecerão aqui
-                              </td>
-                            </tr>
-                          )}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
+                  ) : (
+                    <Button
+                      onClick={handleGenerate}
+                      disabled={!selectedTemplateId || !customName || generateMutation.isPending}
+                      className="w-full bg-gold-gradient text-black font-semibold"
+                    >
+                      {generateMutation.isPending ? (
+                        <>
+                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                          Gerando...
+                        </>
+                      ) : (
+                        <>
+                          <Sparkles className="w-4 h-4 mr-2" />
+                          Gerar Planilha
+                        </>
+                      )}
+                    </Button>
+                  )}
                 </div>
               ) : (
                 <div className="text-center py-8">
-                  <FileText className="w-10 h-10 text-muted-foreground/30 mx-auto mb-2" />
-                  <p className="text-sm text-muted-foreground">
-                    Selecione um modelo para ver o preview
-                  </p>
-                </div>
-              )}
-
-              <Button
-                className="w-full mt-6 bg-gold-gradient text-black font-semibold hover:opacity-90"
-                onClick={handleGenerate}
-                disabled={!selectedTemplateId || !customName || !hasAccess || generateMutation.isPending}
-              >
-                {generateMutation.isPending ? (
-                  <>
-                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                    Gerando...
-                  </>
-                ) : (
-                  <>
-                    <FileSpreadsheet className="w-4 h-4 mr-2" />
-                    Gerar Planilha
-                  </>
-                )}
-              </Button>
-
-              {!hasAccess && selectedTemplate && (
-                <p className="text-xs text-primary mt-3 text-center flex items-center justify-center gap-1">
-                  <AlertCircle className="w-3 h-3" />
-                  Faça upgrade para usar este modelo
-                </p>
-              )}
-
-              {generated && (
-                <div className="mt-4 p-4 rounded-lg bg-primary/5 border border-primary/20">
-                  <div className="flex items-center gap-2 text-primary mb-3">
-                    <Check className="w-4 h-4" />
-                    <span className="text-sm font-medium">Planilha gerada!</span>
-                  </div>
-                  <a href={generated.fileUrl} download={generated.fileName}>
-                    <Button className="w-full" variant="outline">
-                      <Download className="w-4 h-4 mr-2" />
-                      Baixar {generated.fileName}
-                    </Button>
-                  </a>
+                  <FileText className="w-8 h-8 text-muted-foreground mx-auto mb-2 opacity-50" />
+                  <p className="text-xs text-muted-foreground">Selecione um modelo para ver o preview</p>
                 </div>
               )}
             </Card>

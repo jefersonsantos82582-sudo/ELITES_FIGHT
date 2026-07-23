@@ -65,6 +65,11 @@ export default function Checkout() {
       }
       
       try {
+        // Aguardar um pequeno delay para garantir que a sessão está sincronizada
+        if (retryCount === 0) {
+          await new Promise(resolve => setTimeout(resolve, 500));
+        }
+        
         const result = await createPreference({
           planCode,
           successUrl: `${window.location.origin}/checkout/success`,
@@ -78,7 +83,7 @@ export default function Checkout() {
         console.error(`[Checkout] Tentativa ${retryCount + 1} falhou:`, err);
         
         // Se falhou por autenticação, aguardar e tentar novamente até 3 vezes
-        if (active && retryCount < 3) {
+        if (active && retryCount < 3 && err?.message?.includes("login")) {
           setTimeout(() => loadPreference(retryCount + 1), 2000);
         } else if (active) {
           setError(err instanceof Error ? err.message : "Erro ao criar preferência de pagamento");
