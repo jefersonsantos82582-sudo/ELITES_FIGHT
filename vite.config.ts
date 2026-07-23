@@ -166,21 +166,32 @@ export default defineConfig({
   build: {
     outDir: path.resolve(import.meta.dirname, "dist/public"),
     emptyOutDir: true,
-    chunkSizeWarningLimit: 5000,
+    chunkSizeWarningLimit: 10000,
     sourcemap: false,
-    minify: "esbuild",
+    minify: "terser",
+    terserOptions: {
+      compress: {
+        drop_console: true,
+        drop_debugger: true,
+      },
+      mangle: true,
+      format: {
+        comments: false,
+      },
+    },
     rollupOptions: {
       output: {
-        manualChunks: (id) => {
-          // Separar vendor em chunks menores para economizar memória durante build
-          if (id.includes("node_modules")) {
-            if (id.includes("react")) return "react";
-            if (id.includes("lucide-react")) return "lucide";
-            if (id.includes("wouter")) return "wouter";
-            if (id.includes("zod")) return "zod";
-            if (id.includes("@hookform")) return "hookform";
-            return "vendor";
-          }
+        manualChunks: {
+          react: ["react", "react-dom"],
+          lucide: ["lucide-react"],
+          router: ["wouter"],
+          validation: ["zod"],
+          forms: ["@hookform/resolvers", "react-hook-form"],
+          ui: [
+            "@radix-ui/react-dialog",
+            "@radix-ui/react-select",
+            "@radix-ui/react-tabs",
+          ],
         },
       },
     },

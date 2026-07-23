@@ -8,12 +8,12 @@
   },
   "scripts": {
     "dev": "NODE_ENV=development tsx watch server/_core/index.ts",
-    "build": "NODE_OPTIONS=--max-old-space-size=2048 vite build && NODE_OPTIONS=--max-old-space-size=2048 esbuild server/_core/index.ts --platform=node --bundle --format=esm --outfile=dist/index.js --packages=external && NODE_OPTIONS=--max-old-space-size=2048 esbuild scripts/subscription-cron.ts --platform=node --bundle --format=esm --outfile=dist/cron.js --packages=external",
+    "build": "NODE_OPTIONS=--max-old-space-size=3072 vite build && NODE_OPTIONS=--max-old-space-size=2048 esbuild server/_core/index.ts --platform=node --bundle --format=esm --outfile=dist/index.js --packages=external --minify && NODE_OPTIONS=--max-old-space-size=2048 esbuild scripts/subscription-cron.ts --platform=node --bundle --format=esm --outfile=dist/cron.js --packages=external --minify",
     "start": "NODE_ENV=production node dist/index.js",
     "cron": "NODE_ENV=production node dist/cron.js",
     "check": "tsc --noEmit",
     "db:push": "npx drizzle-kit push",
-    "render-build": "npm run db:push && npm run build"
+    "render-build": "npm ci --omit=dev && npm run db:push && npm run build"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.693.0",
