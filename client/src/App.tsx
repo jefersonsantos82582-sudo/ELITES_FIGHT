@@ -15,6 +15,8 @@ import Checkout from "./pages/Checkout";
 import CheckoutSuccess from "./pages/CheckoutSuccess";
 import CheckoutFailure from "./pages/CheckoutFailure";
 import Loading from "./pages/Loading";
+import { useEffect, useState } from "react";
+import { checkEnvironmentVariables, EnvCheckResult } from "./lib/env-check";
 
 function Router() {
   return (
@@ -37,12 +39,33 @@ function Router() {
 }
 
 function App() {
+  const [envCheck, setEnvCheck] = useState<EnvCheckResult | null>(null);
+
+  useEffect(() => {
+    const result = checkEnvironmentVariables();
+    setEnvCheck(result);
+  }, []);
+
   return (
     <ErrorBoundary>
       <ThemeProvider defaultTheme="dark">
         <TooltipProvider>
           <Toaster />
           <Router />
+          {/* Mostrar alerta de variáveis de ambiente em desenvolvimento */}
+          {process.env.NODE_ENV === "development" && envCheck && envCheck.errors.length > 0 && (
+            <div className="fixed bottom-4 right-4 max-w-sm bg-destructive/10 border border-destructive/30 rounded-lg p-4 text-destructive text-sm z-50 animate-in fade-in">
+              <p className="font-bold mb-2">⚠️ Configuração Incompleta</p>
+              <ul className="space-y-1 text-xs">
+                {envCheck.errors.map((err, i) => (
+                  <li key={i} className="break-words">{err}</li>
+                ))}
+              </ul>
+              <p className="text-xs text-muted-foreground mt-3">
+                Configure as variáveis de ambiente no Render Dashboard
+              </p>
+            </div>
+          )}
         </TooltipProvider>
       </ThemeProvider>
     </ErrorBoundary>
