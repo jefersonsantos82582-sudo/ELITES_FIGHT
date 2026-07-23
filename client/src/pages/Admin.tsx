@@ -88,8 +88,8 @@ export default function Admin() {
             <h2 className="font-bold text-xl mb-2">Acesso Restrito</h2>
             <p className="text-sm text-muted-foreground mb-6">Painel Administrativo</p>
             
-            {/* Debug Info - Remover em produção */}
-            {process.env.NODE_ENV === "development" && debugInfo && (
+            {/* Debug Info - Apenas em desenvolvimento */}
+            {import.meta.env.DEV && debugInfo && (
               <div className="text-xs text-muted-foreground bg-muted/50 p-2 rounded border border-border/30 mb-4">
                 Debug: {debugInfo}
               </div>
