@@ -96,15 +96,14 @@ export default function Checkout() {
     }
   };
 
-  // Mostrar carregamento enquanto a autenticação básica ou sincronização está ocorrendo
-  if (authLoading || isSyncing) {
+  // Mostrar carregamento apenas se estiver realmente sem NENHUMA info de usuário
+  // Se já temos fbUser, vamos tentar renderizar a página para acelerar
+  if (authLoading && !fbUser) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background">
         <div className="text-center">
           <Loader2 className="h-8 w-8 animate-spin text-primary mx-auto mb-4" />
-          <p className="text-sm text-muted-foreground">
-            {isSyncing ? "Sincronizando sua conta..." : "Carregando..."}
-          </p>
+          <p className="text-sm text-muted-foreground">Carregando...</p>
         </div>
       </div>
     );
@@ -114,24 +113,24 @@ export default function Checkout() {
     return null;
   }
 
-  // Usuário não autenticado: mostrar tela de login inline
-  if (!user) {
+  // Se não temos user nem fbUser, aí sim precisamos logar
+  if (!user && !fbUser) {
     return (
       <div className="min-h-screen bg-background bg-grid-pattern flex flex-col">
         <Navbar />
         <div className="flex-1 py-12 md:py-20">
           <div className="container max-w-2xl text-center">
             <Loader2 className="h-10 w-10 animate-spin text-primary mx-auto mb-4" />
-            <h1 className="text-2xl font-bold mb-2">Verificando sua conta...</h1>
+            <h1 className="text-2xl font-bold mb-2">Acesso Necessário</h1>
             <p className="text-muted-foreground mb-8">
-              Estamos preparando tudo para o seu upgrade no plano <strong>{planInfo?.name || planCode.toUpperCase()}</strong>.
+              Para assinar o plano <strong>{planInfo?.name || planCode.toUpperCase()}</strong>, você precisa estar logado.
             </p>
             <Button
-              variant="outline"
+              className="bg-gold-gradient text-black font-bold"
               onClick={handleLogin}
               disabled={isLoggingIn}
             >
-              {isLoggingIn ? "Entrando..." : "Clique aqui se não for redirecionado"}
+              {isLoggingIn ? "Entrando..." : "Entrar com Google"}
             </Button>
           </div>
         </div>
