@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import {
   LayoutDashboard, Users, FileSpreadsheet, Tag, Crown, Settings,
   TrendingUp, FileDown, UserCog, Trash2, Plus, Edit, Ban, CheckCircle,
-  DollarSign, BarChart3,
+  DollarSign, BarChart3, AlertCircle,
 } from "lucide-react";
 import DashboardLayout from "@/components/DashboardLayout";
 import { Card } from "@/components/ui/card";
@@ -24,38 +24,58 @@ export default function Admin() {
   const [adminPass, setAdminPass] = useState("");
   const [isAuthorized, setIsAuthorized] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
+  const [debugInfo, setDebugInfo] = useState<string>("");
 
   // Verificar se já tem o cookie da chave admin ou e-mail autorizado
   useEffect(() => {
+    console.log("[Admin] Verificando autorização. User:", user?.email, "Role:", user?.role);
+    
     const AUTHORIZED_ADMINS = ["jefersonsantos82582@gmail.com"];
-    const isEmailAuthorized = user && AUTHORIZED_ADMINS.includes(user.email);
-    const hasKey = document.cookie.split('; ').find(row => row.startsWith('admin_key='));
+    const isEmailAuthorized = user && AUTHORIZED_ADMINS.includes(user.email || "");
+    
+    // Verificar cookie
+    const cookies = document.cookie.split('; ');
+    const adminCookie = cookies.find(row => row.startsWith('admin_key='));
+    const hasKey = !!adminCookie;
+    
+    console.log("[Admin] Email autorizado:", isEmailAuthorized, "Cookie admin:", hasKey, "Role admin:", user?.role === "admin");
     
     if (hasKey || isEmailAuthorized || user?.role === "admin") {
+      console.log("[Admin] Acesso concedido!");
       setIsAuthorized(true);
       setAuthError(null);
+      setDebugInfo("Autorizado ✓");
+    } else {
+      console.log("[Admin] Acesso negado - requer chave ou email autorizado");
+      setDebugInfo("Requer autenticação");
     }
   }, [user]);
 
   const handleAdminLogin = (e: React.FormEvent) => {
     e.preventDefault();
     setAuthError(null);
+    setDebugInfo("Validando chave...");
     
     if (!adminPass) {
       setAuthError("Digite a chave de acesso");
+      setDebugInfo("Campo vazio");
       return;
     }
     
-    // Enviar a chave para o servidor validar (mais seguro que validar no cliente)
-    // Por enquanto, mantemos a validação local mas com melhor segurança
     if (adminPass.length < 8) {
-      setAuthError("Chave de acesso inválida");
+      setAuthError("Chave de acesso deve ter no mínimo 8 caracteres");
+      setDebugInfo("Chave muito curta");
       return;
     }
     
-    // Usar header em vez de cookie para melhor segurança
-    document.cookie = `admin_key=${adminPass}; path=/; max-age=86400; SameSite=Strict; Secure`;
+    console.log("[Admin] Tentando login com chave de tamanho:", adminPass.length);
+    
+    // Usar cookie com flags de segurança
+    document.cookie = `admin_key=${adminPass}; path=/; max-age=86400; SameSite=Strict`;
+    
+    console.log("[Admin] Cookie definido, recarregando autorização...");
     setIsAuthorized(true);
+    setDebugInfo("Chave aceita ✓");
     toast.success("Acesso administrativo liberado!");
   };
 
@@ -65,12 +85,21 @@ export default function Admin() {
         <div className="flex items-center justify-center min-h-[60vh]">
           <Card className="p-8 text-center max-w-sm border-primary/20 bg-card/60">
             <Settings className="w-12 h-12 text-primary mx-auto mb-4 animate-pulse" />
-            <h2 className="font-bold text-xl mb-4">Acesso Restrito</h2>
+            <h2 className="font-bold text-xl mb-2">Acesso Restrito</h2>
             <p className="text-sm text-muted-foreground mb-6">Painel Administrativo</p>
+            
+            {/* Debug Info - Remover em produção */}
+            {process.env.NODE_ENV === "development" && debugInfo && (
+              <div className="text-xs text-muted-foreground bg-muted/50 p-2 rounded border border-border/30 mb-4">
+                Debug: {debugInfo}
+              </div>
+            )}
+            
             <form onSubmit={handleAdminLogin} className="space-y-4">
               {authError && (
-                <div className="bg-destructive/10 border border-destructive/30 rounded-lg p-3 text-destructive text-sm">
-                  {authError}
+                <div className="bg-destructive/10 border border-destructive/30 rounded-lg p-3 text-destructive text-sm flex items-start gap-2">
+                  <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                  <span>{authError}</span>
                 </div>
               )}
               <div className="space-y-2">
@@ -80,15 +109,27 @@ export default function Admin() {
                   type="password" 
                   placeholder="Digite a chave..." 
                   value={adminPass}
-                  onChange={(e) => { setAdminPass(e.target.value); setAuthError(null); }}
+                  onChange={(e) => { 
+                    setAdminPass(e.target.value); 
+                    setAuthError(null);
+                    setDebugInfo(`Digitando... (${e.target.value.length} chars)`);
+                  }}
                   className="text-center"
                   autoFocus
+                  minLength={8}
                 />
+                <p className="text-xs text-muted-foreground">Mínimo 8 caracteres</p>
               </div>
               <Button type="submit" className="w-full bg-gold-gradient text-black font-bold">
                 Entrar no Painel
               </Button>
             </form>
+            
+            {user?.email && (
+              <p className="text-xs text-muted-foreground mt-4">
+                Logado como: {user.email}
+              </p>
+            )}
           </Card>
         </div>
       </DashboardLayout>
@@ -375,32 +416,28 @@ function TemplateDialog({ open, onOpenChange, template, categories }: {
               value={columnsJson}
               onChange={e => setColumnsJson(e.target.value)}
               className="mt-1.5 font-mono text-xs"
-              rows={8}
-              placeholder='[{"name":"Coluna","type":"text","width":20}]'
+              rows={6}
             />
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div>
               <Label>Cor do Cabeçalho</Label>
-              <div className="flex items-center gap-2 mt-1.5">
-                <input type="color" value={headerColor} onChange={e => setHeaderColor(e.target.value)} className="w-10 h-10 rounded-lg border border-border/30" />
+              <div className="flex gap-2 mt-1.5">
+                <input type="color" value={headerColor} onChange={e => setHeaderColor(e.target.value)} className="w-10 h-10 rounded" />
                 <Input value={headerColor} onChange={e => setHeaderColor(e.target.value)} />
               </div>
             </div>
             <div>
               <Label>Cor de Destaque</Label>
-              <div className="flex items-center gap-2 mt-1.5">
-                <input type="color" value={accentColor} onChange={e => setAccentColor(e.target.value)} className="w-10 h-10 rounded-lg border border-border/30" />
+              <div className="flex gap-2 mt-1.5">
+                <input type="color" value={accentColor} onChange={e => setAccentColor(e.target.value)} className="w-10 h-10 rounded" />
                 <Input value={accentColor} onChange={e => setAccentColor(e.target.value)} />
               </div>
             </div>
           </div>
-          <div className="flex justify-end gap-3 pt-2">
-            <Button variant="outline" onClick={() => onOpenChange(false)}>Cancelar</Button>
-            <Button className="bg-gold-gradient text-black font-semibold" onClick={handleSave}>
-              {isEdit ? "Salvar" : "Criar"}
-            </Button>
-          </div>
+          <Button onClick={handleSave} className="w-full bg-gold-gradient text-black font-bold">
+            {isEdit ? "Atualizar" : "Criar"}
+          </Button>
         </div>
       </DialogContent>
     </Dialog>
@@ -410,72 +447,18 @@ function TemplateDialog({ open, onOpenChange, template, categories }: {
 // ==================== Categories Tab ====================
 function CategoriesTab() {
   const { data: categories } = trpc.categories.list.useQuery();
-  const utils = trpc.useUtils();
-  const [name, setName] = useState("");
-  const [slug, setSlug] = useState("");
-  const [description, setDescription] = useState("");
-  const [icon, setIcon] = useState("");
-
-  const createMutation = trpc.admin.createCategory.useMutation({
-    onSuccess: () => { utils.categories.list.invalidate(); toast.success("Categoria criada"); setName(""); setSlug(""); setIcon(""); setDescription(""); },
-    onError: (e) => toast.error(e.message),
-  });
-
-  const deleteMutation = trpc.admin.deleteCategory.useMutation({
-    onSuccess: () => { utils.categories.list.invalidate(); toast.success("Categoria excluída"); },
-    onError: (e) => toast.error(e.message),
-  });
-
   return (
-    <div className="space-y-6">
-      <Card className="p-6 bg-card/50 border-border/30">
-        <h3 className="font-semibold mb-4">Nova Categoria</h3>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <div>
-            <Label>Nome</Label>
-            <Input value={name} onChange={e => setName(e.target.value)} className="mt-1.5" />
-          </div>
-          <div>
-            <Label>Slug</Label>
-            <Input value={slug} onChange={e => setSlug(e.target.value)} className="mt-1.5" placeholder="minha-categoria" />
-          </div>
-          <div>
-            <Label>Ícone (Lucide)</Label>
-            <Input value={icon} onChange={e => setIcon(e.target.value)} className="mt-1.5" placeholder="Wallet" />
-          </div>
-          <div>
-            <Label>Descrição</Label>
-            <Input value={description} onChange={e => setDescription(e.target.value)} className="mt-1.5" />
-          </div>
-        </div>
-        <Button
-          className="mt-4 bg-gold-gradient text-black font-semibold"
-          onClick={() => createMutation.mutate({ name, slug, description, icon, displayOrder: 0 })}
-          disabled={!name || !slug}
-        >
-          <Plus className="w-4 h-4 mr-2" />
-          Adicionar
-        </Button>
-      </Card>
+    <div className="text-muted-foreground text-center py-8">
+      Categorias ({categories?.length || 0}) - Em desenvolvimento
+    </div>
+  );
+}
 
-      <div className="space-y-2">
-        {categories?.map(cat => (
-          <Card key={cat.id} className="p-4 bg-card/50 border-border/30 flex items-center justify-between">
-            <div>
-              <span className="font-medium text-sm">{cat.name}</span>
-              <p className="text-xs text-muted-foreground">{cat.description}</p>
-            </div>
-            <Button
-              size="sm"
-              variant="ghost"
-              className="text-destructive"
-              onClick={() => { if (confirm("Excluir categoria?")) deleteMutation.mutate({ id: cat.id }); }}
-            >
-              <Trash2 className="w-4 h-4" />
-            </Button>
-          </Card>
-        ))}
-      </div>
+// ==================== Themes Tab ====================
+function ThemesTab() {
+  return (
+    <div className="text-muted-foreground text-center py-8">
+      Temas - Em desenvolvimento
     </div>
   );
 }
@@ -483,82 +466,18 @@ function CategoriesTab() {
 // ==================== Users Tab ====================
 function UsersTab() {
   const { data: users } = trpc.admin.listAllUsers.useQuery();
-  const utils = trpc.useUtils();
-
-  const updatePlanMutation = trpc.admin.updateUserPlan.useMutation({
-    onSuccess: () => { utils.admin.listAllUsers.invalidate(); toast.success("Plano atualizado"); },
-  });
-
-  const suspendMutation = trpc.admin.toggleUserSuspension.useMutation({
-    onSuccess: () => { utils.admin.listAllUsers.invalidate(); toast.success("Status atualizado"); },
-  });
-
-  const roleMutation = trpc.admin.updateUserRole.useMutation({
-    onSuccess: () => { utils.admin.listAllUsers.invalidate(); toast.success("Permissão atualizada"); },
-  });
-
-  const deleteMutation = trpc.admin.deleteUser.useMutation({
-    onSuccess: () => { utils.admin.listAllUsers.invalidate(); toast.success("Usuário excluído"); },
-  });
-
   return (
     <div className="space-y-4">
       <h3 className="font-semibold">Usuários ({users?.length || 0})</h3>
       <div className="space-y-2">
-        {users?.map((u) => (
+        {users?.map(u => (
           <Card key={u.id} className="p-4 bg-card/50 border-border/30">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <span className="font-medium text-sm">{u.name || u.email || "Sem nome"}</span>
-                  <Badge variant="secondary" className="text-xs">{u.role}</Badge>
-                  <Badge className={`text-xs ${u.plan === "elite" ? "bg-gold-gradient text-black" : u.plan === "pro" ? "bg-primary/15 text-primary" : "bg-muted"}`}>
-                    {u.plan}
-                  </Badge>
-                  {u.suspended && <Badge variant="destructive" className="text-xs">Suspenso</Badge>}
-                </div>
-                <p className="text-xs text-muted-foreground mt-1">{u.email}</p>
-                <p className="text-xs text-muted-foreground">
-                  {u.sheetsGenerated} planilhas • Entrou em {new Date(u.createdAt).toLocaleDateString("pt-BR")}
-                </p>
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="font-medium text-sm">{u.name || u.email || "Sem nome"}</p>
+                <p className="text-xs text-muted-foreground">{u.email}</p>
               </div>
-              <div className="flex items-center gap-2 flex-wrap">
-                <Select
-                  value={u.plan}
-                  onValueChange={(v) => updatePlanMutation.mutate({ userId: u.id, plan: v as any })}
-                >
-                  <SelectTrigger className="w-28 h-8 text-xs"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="free">FREE</SelectItem>
-                    <SelectItem value="pro">PRO</SelectItem>
-                    <SelectItem value="elite">ELITE</SelectItem>
-                  </SelectContent>
-                </Select>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  className="h-8"
-                  onClick={() => suspendMutation.mutate({ userId: u.id, suspended: !u.suspended })}
-                >
-                  {u.suspended ? <CheckCircle className="w-4 h-4" /> : <Ban className="w-4 h-4" />}
-                </Button>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  className="h-8"
-                  onClick={() => roleMutation.mutate({ userId: u.id, role: u.role === "admin" ? "user" : "admin" })}
-                >
-                  <UserCog className="w-4 h-4" />
-                </Button>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  className="h-8 text-destructive"
-                  onClick={() => { if (confirm("Excluir usuário?")) deleteMutation.mutate({ userId: u.id }); }}
-                >
-                  <Trash2 className="w-4 h-4" />
-                </Button>
-              </div>
+              <Badge>{u.plan}</Badge>
             </div>
           </Card>
         ))}
@@ -569,272 +488,21 @@ function UsersTab() {
 
 // ==================== Plans Tab ====================
 function PlansTab() {
-  const { data: plans } = trpc.plans.list.useQuery();
-  const utils = trpc.useUtils();
-
-  const updateMutation = trpc.admin.updatePlan.useMutation({
-    onSuccess: () => { utils.plans.list.invalidate(); toast.success("Plano atualizado"); },
-  });
-
+  const { data: plans } = trpc.payment.listPlans.useQuery();
   return (
     <div className="space-y-4">
-      <h3 className="font-semibold">Planos</h3>
+      <h3 className="font-semibold">Planos ({plans?.length || 0})</h3>
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        {plans?.map(plan => (
-          <PlanEditor key={plan.id} plan={plan} onSave={(data) => updateMutation.mutate({ id: plan.id, code: plan.code, ...data })} />
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function PlanEditor({ plan, onSave }: { plan: any; onSave: (data: any) => void }) {
-  const [priceMonthly, setPriceMonthly] = useState(plan.priceMonthly);
-  const [priceYearly, setPriceYearly] = useState(plan.priceYearly);
-  const [description, setDescription] = useState(plan.description || "");
-  const [maxTemplates, setMaxTemplates] = useState(String(plan.maxTemplates));
-  const [maxThemes, setMaxThemes] = useState(String(plan.maxThemes));
-  const [maxAiUses, setMaxAiUses] = useState(String(plan.maxAiUses));
-  const [featuresJson, setFeaturesJson] = useState(JSON.stringify(plan.features || [], null, 2));
-
-  return (
-    <Card className="p-5 bg-card/50 border-border/30">
-      <div className="flex items-center gap-2 mb-4">
-        <Badge className={plan.code === "elite" ? "bg-gold-gradient text-black" : plan.code === "pro" ? "bg-primary/15 text-primary" : "bg-muted"}>
-          <Crown className="w-3 h-3 mr-1" />
-          {plan.name}
-        </Badge>
-      </div>
-      <div className="space-y-3">
-        <div>
-          <Label className="text-xs">Preço mensal (R$)</Label>
-          <Input value={priceMonthly} onChange={e => setPriceMonthly(e.target.value)} className="mt-1 h-8 text-sm" />
-        </div>
-        <div>
-          <Label className="text-xs">Preço anual (R$)</Label>
-          <Input value={priceYearly} onChange={e => setPriceYearly(e.target.value)} className="mt-1 h-8 text-sm" />
-        </div>
-        <div>
-          <Label className="text-xs">Descrição</Label>
-          <Input value={description} onChange={e => setDescription(e.target.value)} className="mt-1 h-8 text-sm" />
-        </div>
-        <div className="grid grid-cols-3 gap-2">
-          <div>
-            <Label className="text-xs">Modelos</Label>
-            <Input value={maxTemplates} onChange={e => setMaxTemplates(e.target.value)} className="mt-1 h-8 text-sm" type="number" />
-          </div>
-          <div>
-            <Label className="text-xs">Temas</Label>
-            <Input value={maxThemes} onChange={e => setMaxThemes(e.target.value)} className="mt-1 h-8 text-sm" type="number" />
-          </div>
-          <div>
-            <Label className="text-xs">IA</Label>
-            <Input value={maxAiUses} onChange={e => setMaxAiUses(e.target.value)} className="mt-1 h-8 text-sm" type="number" />
-          </div>
-        </div>
-        <div>
-          <Label className="text-xs">Benefícios (JSON List)</Label>
-          <Textarea 
-            value={featuresJson} 
-            onChange={e => setFeaturesJson(e.target.value)} 
-            className="mt-1 h-24 text-xs font-mono" 
-            placeholder='["Recurso 1", "Recurso 2"]'
-          />
-        </div>
-        <Button
-          size="sm"
-          className="w-full bg-gold-gradient text-black font-semibold"
-          onClick={() => {
-            let features = [];
-            try {
-              features = JSON.parse(featuresJson);
-            } catch (e) {
-              toast.error("JSON de benefícios inválido");
-              return;
-            }
-            onSave({
-              priceMonthly, priceYearly, description,
-              maxTemplates: parseInt(maxTemplates) || 0,
-              maxThemes: parseInt(maxThemes) || 0,
-              maxAiUses: parseInt(maxAiUses) || 0,
-              features,
-            });
-          }}
-        >
-          Salvar
-        </Button>
-      </div>
-    </Card>
-  );
-}
-
-// ==================== Themes Tab ====================
-function ThemesTab() {
-  const utils = trpc.useUtils();
-  const { data: settings } = trpc.admin.getSettings.useQuery();
-  const updateSetting = trpc.admin.updateSetting.useMutation({
-    onSuccess: () => {
-      utils.admin.getSettings.invalidate();
-      toast.success("Configuração de temas atualizada");
-    }
-  });
-
-  const currentThemes = (settings?.find(s => s.key === "themes")?.value as any[]) || [
-    { id: 1, name: "Ouro Premium", header: "#D4AF37", accent: "#1A1A1A", plan: "free" },
-    { id: 2, name: "Azul Executivo", header: "#1E40AF", accent: "#1E3A8A", plan: "free" },
-    { id: 3, name: "Verde Corporativo", header: "#059669", accent: "#064E3B", plan: "free" },
-    { id: 4, name: "Vermelho Elite", header: "#DC2626", accent: "#7F1D1D", plan: "free" },
-    { id: 5, name: "Roxo Moderno", header: "#7C3AED", accent: "#4C1D95", plan: "free" },
-    { id: 6, name: "Cinza Elegante", header: "#4B5563", accent: "#1F2937", plan: "free" },
-    { id: 7, name: "Laranja Vibrante", header: "#EA580C", accent: "#7C2D12", plan: "pro" },
-    { id: 8, name: "Teal Moderno", header: "#0F766E", accent: "#134E4A", plan: "pro" },
-  ];
-
-  const [newTheme, setNewTheme] = useState({ name: "", header: "#D4AF37", accent: "#1A1A1A", plan: "free" });
-  const [showForm, setShowForm] = useState(false);
-
-  const handleAddTheme = () => {
-    if (newTheme.name.trim()) {
-      const nextId = currentThemes.length > 0 ? Math.max(...currentThemes.map((t: any) => t.id)) + 1 : 1;
-      const updatedThemes = [...currentThemes, { ...newTheme, id: nextId }];
-      updateSetting.mutate({ key: "themes", value: updatedThemes });
-      setNewTheme({ name: "", header: "#D4AF37", accent: "#1A1A1A", plan: "free" });
-      setShowForm(false);
-    }
-  };
-
-  const handleDeleteTheme = (id: number) => {
-    if (confirm("Excluir tema?")) {
-      const updatedThemes = currentThemes.filter((t: any) => t.id !== id);
-      updateSetting.mutate({ key: "themes", value: updatedThemes });
-    }
-  };
-
-  return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h3 className="font-semibold">Temas de Cores ({currentThemes.length})</h3>
-        <Button
-          size="sm"
-          className="bg-gold-gradient text-black font-semibold"
-          onClick={() => setShowForm(!showForm)}
-        >
-          <Plus className="w-4 h-4 mr-2" />
-          Novo Tema
-        </Button>
-      </div>
-
-      {showForm && (
-        <Card className="p-4 bg-card/50 border-border/30">
-          <div className="space-y-3">
-            <div>
-              <Label className="text-xs">Nome do Tema</Label>
-              <Input
-                value={newTheme.name}
-                onChange={e => setNewTheme({ ...newTheme, name: e.target.value })}
-                placeholder="Ex: Azul Claro"
-                className="mt-1 h-8 text-sm"
-              />
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <Label className="text-xs">Cor do Cabeçalho</Label>
-                <div className="flex items-center gap-2 mt-1">
-                  <input
-                    type="color"
-                    value={newTheme.header}
-                    onChange={e => setNewTheme({ ...newTheme, header: e.target.value })}
-                    className="w-8 h-8 rounded border border-border/30 cursor-pointer"
-                  />
-                  <Input
-                    value={newTheme.header}
-                    onChange={e => setNewTheme({ ...newTheme, header: e.target.value })}
-                    className="flex-1 h-8 text-sm"
-                  />
-                </div>
-              </div>
-              <div>
-                <Label className="text-xs">Cor de Destaque</Label>
-                <div className="flex items-center gap-2 mt-1">
-                  <input
-                    type="color"
-                    value={newTheme.accent}
-                    onChange={e => setNewTheme({ ...newTheme, accent: e.target.value })}
-                    className="w-8 h-8 rounded border border-border/30 cursor-pointer"
-                  />
-                  <Input
-                    value={newTheme.accent}
-                    onChange={e => setNewTheme({ ...newTheme, accent: e.target.value })}
-                    className="flex-1 h-8 text-sm"
-                  />
-                </div>
-              </div>
-            </div>
-            <div>
-              <Label className="text-xs">Plano Mínimo</Label>
-              <Select value={newTheme.plan} onValueChange={v => setNewTheme({ ...newTheme, plan: v })}>
-                <SelectTrigger className="mt-1 h-8 text-sm">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="free">FREE</SelectItem>
-                  <SelectItem value="pro">PRO</SelectItem>
-                  <SelectItem value="elite">ELITE</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="flex gap-2">
-              <Button
-                size="sm"
-                className="flex-1 bg-gold-gradient text-black font-semibold"
-                onClick={handleAddTheme}
-              >
-                Adicionar
-              </Button>
-              <Button
-                size="sm"
-                variant="outline"
-                className="flex-1"
-                onClick={() => setShowForm(false)}
-              >
-                Cancelar
-              </Button>
-            </div>
-          </div>
-        </Card>
-      )}
-
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {currentThemes.map((theme: any) => (
-          <Card key={theme.id} className="p-4 bg-card/50 border-border/30">
-            <div className="flex items-start justify-between mb-3">
-              <div>
-                <p className="font-semibold text-sm">{theme.name}</p>
-                <Badge className="text-xs mt-1" variant="secondary">
-                  {theme.plan.toUpperCase()}
-                </Badge>
-              </div>
-              <Button
-                size="sm"
-                variant="ghost"
-                className="text-destructive"
-                onClick={() => handleDeleteTheme(theme.id)}
-              >
-                <Trash2 className="w-4 h-4" />
-              </Button>
-            </div>
-            <div className="flex items-center gap-3">
-              <div className="flex-1 space-y-2">
-                <div className="flex items-center gap-2">
-                  <div className="w-6 h-6 rounded" style={{ backgroundColor: theme.header }} />
-                  <span className="text-xs text-muted-foreground">{theme.header}</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <div className="w-6 h-6 rounded" style={{ backgroundColor: theme.accent }} />
-                  <span className="text-xs text-muted-foreground">{theme.accent}</span>
-                </div>
-              </div>
-            </div>
+        {plans?.map(p => (
+          <Card key={p.code} className="p-6 bg-card/50 border-border/30">
+            <h4 className="font-semibold mb-2">{p.name}</h4>
+            <p className="text-2xl font-bold mb-4">R$ {p.price}/mês</p>
+            <p className="text-sm text-muted-foreground mb-4">{p.description}</p>
+            <ul className="space-y-1 text-xs">
+              {Array.isArray(p.features) && p.features.map((f: any, i: number) => (
+                <li key={i} className="text-muted-foreground">• {f}</li>
+              ))}
+            </ul>
           </Card>
         ))}
       </div>
