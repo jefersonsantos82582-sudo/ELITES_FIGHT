@@ -12,6 +12,7 @@ import { Loader2, ArrowLeft, Check, LogIn } from "lucide-react";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import MercadoPagoCheckout from "@/components/MercadoPagoCheckout";
+import DashboardLayout from "@/components/DashboardLayout";
 
 export default function Checkout() {
   const { user, fbUser, isSyncing, loading: authLoading, login } = useAuth();
@@ -113,48 +114,30 @@ export default function Checkout() {
     return null;
   }
 
-  // Se não temos user nem fbUser, aí sim precisamos logar
-  if (!user && !fbUser) {
+  // O DashboardLayout já lida com o estado de deslogado.
+  // Se chegamos aqui sem nada, apenas mostramos um loading neutro até o layout assumir.
+  if (!user && !fbUser && authLoading) {
     return (
-      <div className="min-h-screen bg-background bg-grid-pattern flex flex-col">
-        <Navbar />
-        <div className="flex-1 py-12 md:py-20">
-          <div className="container max-w-2xl text-center">
-            <Loader2 className="h-10 w-10 animate-spin text-primary mx-auto mb-4" />
-            <h1 className="text-2xl font-bold mb-2">Acesso Necessário</h1>
-            <p className="text-muted-foreground mb-8">
-              Para assinar o plano <strong>{planInfo?.name || planCode.toUpperCase()}</strong>, você precisa estar logado.
-            </p>
-            <Button
-              className="bg-gold-gradient text-black font-bold"
-              onClick={handleLogin}
-              disabled={isLoggingIn}
-            >
-              {isLoggingIn ? "Entrando..." : "Entrar com Google"}
-            </Button>
-          </div>
-        </div>
-        <Footer />
+      <div className="flex min-h-screen items-center justify-center bg-background">
+        <Loader2 className="h-10 w-10 animate-spin text-primary" />
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-background bg-grid-pattern flex flex-col">
-      <Navbar />
-
-      <div className="flex-1 py-12 md:py-20">
+    <DashboardLayout>
+      <div className="py-8 md:py-12">
         <div className="container max-w-2xl">
           <Button
             variant="ghost"
-            onClick={() => setLocation(user ? "/dashboard" : "/#planos")}
+            onClick={() => setLocation("/dashboard")}
             className="mb-8"
           >
             <ArrowLeft className="w-4 h-4 mr-2" />
-            Voltar {user ? "ao dashboard" : "aos planos"}
+            Voltar ao dashboard
           </Button>
 
-          <Card className="p-8 bg-card border-border/30">
+          <Card className="p-8 bg-card border-border/30 shadow-xl">
             <div className="text-center mb-8">
               <h1 className="text-3xl font-bold mb-2">Upgrade de Plano</h1>
               <p className="text-muted-foreground">
@@ -191,8 +174,11 @@ export default function Checkout() {
             )}
 
             {isLoading ? (
-              <div className="flex items-center justify-center py-12">
-                <Loader2 className="w-8 h-8 animate-spin text-primary" />
+              <div className="flex flex-col items-center justify-center py-12 gap-4">
+                <Loader2 className="w-10 h-10 animate-spin text-primary" />
+                <p className="text-sm text-muted-foreground animate-pulse">
+                  Criando seu túnel de pagamento seguro...
+                </p>
               </div>
             ) : preferenceId ? (
               <div>
@@ -223,14 +209,13 @@ export default function Checkout() {
               </div>
             ) : !error ? (
               <div className="text-center py-12">
+                <Loader2 className="w-8 h-8 animate-spin text-primary mx-auto mb-4" />
                 <p className="text-muted-foreground">Carregando opções de pagamento...</p>
               </div>
             ) : null}
           </Card>
         </div>
       </div>
-
-      <Footer />
-    </div>
+    </DashboardLayout>
   );
 }
