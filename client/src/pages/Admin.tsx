@@ -693,7 +693,7 @@ function ThemesTab() {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h3 className="font-semibold">Temas de Cores ({themes.length})</h3>
+        <h3 className="font-semibold">Temas de Cores ({currentThemes.length})</h3>
         <Button
           size="sm"
           className="bg-gold-gradient text-black font-semibold"
