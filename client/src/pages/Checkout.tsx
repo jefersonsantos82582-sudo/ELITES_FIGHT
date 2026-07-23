@@ -46,10 +46,16 @@ export default function Checkout() {
       return;
     }
 
-    // Tunnel de emergência: se já temos fbUser (Firebase) mas o 'user' (DB) ainda está carregando,
-    // vamos permitir a tentativa de criar preferência para ser super rápido.
-    if (!fbUser && !user && !authLoading) return;
-    if (authLoading && !fbUser) return;
+    // CORREÇÃO: Só tentar criar a preferência se o servidor reconheceu o usuário.
+    // O erro "Please login (10001)" ocorre porque o Checkout tentava chamar
+    // createUpgradePreference (protectedProcedure) antes do servidor confirmar
+    // a sessão via auth.me. Agora aguardamos user !== null (servidor confirmou).
+    if (!user) {
+      // Se ainda está carregando, não faz nada (vai tentar de novo quando user aparecer)
+      if (authLoading || isSyncing) return;
+      // Se acabou de carregar e não tem user, não tenta (o layout vai mostrar login)
+      return;
+    }
 
     let active = true;
     const loadPreference = async (retryCount = 0) => {
@@ -68,12 +74,12 @@ export default function Checkout() {
           setPreferenceId(result.preferenceId);
           setIsLoading(false);
         }
-      } catch (err) {
+      } catch (err: any) {
         console.error(`[Checkout] Tentativa ${retryCount + 1} falhou:`, err);
         
-        // Se falhou por autenticação ou sincronização, tentar novamente até 3 vezes
+        // Se falhou por autenticação, aguardar e tentar novamente até 3 vezes
         if (active && retryCount < 3) {
-          setTimeout(() => loadPreference(retryCount + 1), 1500);
+          setTimeout(() => loadPreference(retryCount + 1), 2000);
         } else if (active) {
           setError(err instanceof Error ? err.message : "Erro ao criar preferência de pagamento");
           setIsLoading(false);
@@ -83,7 +89,7 @@ export default function Checkout() {
 
     void loadPreference();
     return () => { active = false; };
-  }, [authLoading, user?.id, planCode, setLocation, createPreference]);
+  }, [user?.id, planCode, setLocation, createPreference, authLoading, isSyncing]);
 
   const handleLogin = async () => {
     setIsLoggingIn(true);
@@ -98,8 +104,7 @@ export default function Checkout() {
   };
 
   // Mostrar carregamento apenas se estiver realmente sem NENHUMA info de usuário
-  // Se já temos fbUser, vamos tentar renderizar a página para acelerar
-  if (authLoading && !fbUser) {
+  if (authLoading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background">
         <div className="text-center">
@@ -114,13 +119,31 @@ export default function Checkout() {
     return null;
   }
 
-  // O DashboardLayout já lida com o estado de deslogado.
-  // Se chegamos aqui sem nada, apenas mostramos um loading neutro até o layout assumir.
-  if (!user && !fbUser && authLoading) {
+  // Se não tem user do servidor mas temos fbUser, mostrar tela de espera
+  // (o user está sincronizando com o servidor)
+  if (!user && fbUser && isSyncing) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-background">
-        <Loader2 className="h-10 w-10 animate-spin text-primary" />
-      </div>
+      <DashboardLayout>
+        <div className="flex min-h-screen items-center justify-center bg-background">
+          <div className="text-center">
+            <Loader2 className="h-10 w-10 animate-spin text-primary mx-auto mb-4" />
+            <p className="text-sm text-muted-foreground">Sincronizando sua sessão...</p>
+          </div>
+        </div>
+      </DashboardLayout>
+    );
+  }
+
+  // Se não tem user nem fbUser, o DashboardLayout vai mostrar a tela de login
+  if (!user && !fbUser) {
+    return (
+      <DashboardLayout>
+        <div className="py-8 md:py-12">
+          <div className="container max-w-2xl text-center">
+            <p className="text-muted-foreground">Faça login para continuar com o pagamento.</p>
+          </div>
+        </div>
+      </DashboardLayout>
     );
   }
 
@@ -156,16 +179,19 @@ export default function Checkout() {
                   onClick={() => {
                     setError(null);
                     setPreferenceId(null);
-                    // Re-trigger o useEffect
                     setIsLoading(true);
-                    createPreference({
-                      planCode: planCode!,
-                      successUrl: `${window.location.origin}/checkout/success`,
-                      failureUrl: `${window.location.origin}/checkout/failure`,
-                    })
-                      .then(result => setPreferenceId(result.preferenceId))
-                      .catch(err => setError(err instanceof Error ? err.message : "Erro ao criar preferência"))
-                      .finally(() => setIsLoading(false));
+                    // Forçar refetch do auth.me antes de tentar novamente
+                    trpc.auth.me.invalidate();
+                    setTimeout(() => {
+                      createPreference({
+                        planCode: planCode!,
+                        successUrl: `${window.location.origin}/checkout/success`,
+                        failureUrl: `${window.location.origin}/checkout/failure`,
+                      })
+                        .then(result => setPreferenceId(result.preferenceId))
+                        .catch(err => setError(err instanceof Error ? err.message : "Erro ao criar preferência"))
+                        .finally(() => setIsLoading(false));
+                    }, 1000);
                   }}
                 >
                   Tentar novamente
