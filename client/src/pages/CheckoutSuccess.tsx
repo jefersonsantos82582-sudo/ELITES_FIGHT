@@ -20,7 +20,7 @@ export default function CheckoutSuccess() {
     // Realizamos múltiplas tentativas para garantir que o usuário veja o plano atualizado.
     let mounted = true;
     let attempts = 0;
-    const maxAttempts = 5;
+    const maxAttempts = 10;
 
     const refreshData = async () => {
       if (!mounted) return;
@@ -40,9 +40,9 @@ export default function CheckoutSuccess() {
           if (mounted) setIsRefreshing(false);
           console.log("[CheckoutSuccess] Plano atualizado com sucesso!");
         } else {
-          // Tentar novamente em 3 segundos
+          // Tentar novamente em 2 segundos para ser mais ágil
           attempts++;
-          setTimeout(refreshData, 3000);
+          setTimeout(refreshData, 2000);
         }
       } catch (err) {
         console.error("[CheckoutSuccess] Erro ao atualizar dados:", err);

@@ -39,16 +39,16 @@ export default function Checkout() {
     : [];
 
   useEffect(() => {
-    if (authLoading || isSyncing) return;
-
     // Se não há planCode válido, voltar para a home
     if (!planCode) {
       setLocation("/");
       return;
     }
 
-    // Se não está logado, não criar preferência ainda
-    if (!user) return;
+    // Tunnel de emergência: se já temos fbUser (Firebase) mas o 'user' (DB) ainda está carregando,
+    // vamos permitir a tentativa de criar preferência para ser super rápido.
+    if (!fbUser && !user && !authLoading) return;
+    if (authLoading && !fbUser) return;
 
     let active = true;
     const loadPreference = async (retryCount = 0) => {

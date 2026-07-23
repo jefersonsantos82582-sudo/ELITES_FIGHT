@@ -105,13 +105,14 @@ export function useAuth(options?: UseAuthOptions) {
             
             // Garantir persistência imediata antes de qualquer chamada de API
             localStorage.setItem("firebase-token", token);
+            // Tunnel de emergência: definir o cookie imediatamente com o token
             document.cookie = `${COOKIE_NAME}=${token}; path=/; max-age=3600; SameSite=Lax`;
             
-            console.log("[Auth] Token sincronizado, disparando refetch em background...");
+            console.log("[Auth] Token sincronizado, disparando refetch...");
 
-            // Disparar refetch em background sem travar a UI principal
-            utils.auth.me.invalidate();
-            utils.auth.me.refetch();
+            // Invalidar e refetch imediato para garantir que o servidor veja o usuário
+            await utils.auth.me.invalidate();
+            await utils.auth.me.refetch();
           } else {
             localStorage.removeItem("firebase-token");
             document.cookie = `${COOKIE_NAME}=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT`;

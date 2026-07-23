@@ -111,7 +111,7 @@ class MercadoPagoService {
       // No Render ou produção, a URL do webhook deve ser acessível publicamente
       notification_url: process.env.RENDER_EXTERNAL_URL 
         ? `${process.env.RENDER_EXTERNAL_URL}/api/webhooks/mercadopago`
-        : undefined,
+        : "https://elites-fight.onrender.com/api/webhooks/mercadopago",
     };
 
     return this.createPreference(payload);
