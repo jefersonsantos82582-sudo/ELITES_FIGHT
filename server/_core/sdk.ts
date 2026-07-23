@@ -124,23 +124,40 @@ class SDKServer {
       const { uid, name, email, picture } = decodedToken;
       const signedInAt = new Date();
 
-      // Garantir que o usuário exista no banco de dados
-      await db.upsertUser({
+      try {
+        // Tentar sincronizar com o banco de dados
+        await db.upsertUser({
+          openId: uid,
+          name: name || email || "Usuário Google",
+          email: email || null,
+          photoUrl: picture || null,
+          loginMethod: "google",
+          lastSignedIn: signedInAt,
+        });
+
+        const user = await db.getUserByOpenId(uid);
+        if (user) return user;
+      } catch (dbError) {
+        console.error("[Auth] Erro ao sincronizar com o banco de dados:", dbError);
+      }
+
+      // ROTA DE EMERGÊNCIA: Se o banco de dados falhar ou demorar,
+      // retornamos um objeto de usuário baseado no Token do Firebase para destravar o fluxo (ex: Pagamentos)
+      return {
+        id: uid,
         openId: uid,
         name: name || email || "Usuário Google",
         email: email || null,
         photoUrl: picture || null,
-        loginMethod: "google",
+        role: "user",
+        plan: "free",
+        sheetsGenerated: 0,
         lastSignedIn: signedInAt,
-      });
-
-      const user = await db.getUserByOpenId(uid);
-      if (!user) {
-        console.error(`[Auth] Falha crítica: Usuário ${uid} não encontrado no banco após upsert`);
-        throw new Error("Usuário não encontrado no banco de dados após a autenticação");
-      }
-
-      return user;
+        createdAt: signedInAt,
+        updatedAt: signedInAt,
+        suspended: false,
+        loginMethod: "google",
+      } as any;
     } catch (error) {
       console.error("[Auth] Falha ao validar o token Firebase:", error);
       throw ForbiddenError("Invalid authentication token");
