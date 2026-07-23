@@ -166,11 +166,21 @@ export default defineConfig({
   build: {
     outDir: path.resolve(import.meta.dirname, "dist/public"),
     emptyOutDir: true,
-    chunkSizeWarningLimit: 2000,
+    chunkSizeWarningLimit: 5000,
+    sourcemap: false,
+    minify: "esbuild",
     rollupOptions: {
       output: {
-        manualChunks: {
-          vendor: ['react', 'react-dom', 'lucide-react', 'wouter'],
+        manualChunks: (id) => {
+          // Separar vendor em chunks menores para economizar memória durante build
+          if (id.includes("node_modules")) {
+            if (id.includes("react")) return "react";
+            if (id.includes("lucide-react")) return "lucide";
+            if (id.includes("wouter")) return "wouter";
+            if (id.includes("zod")) return "zod";
+            if (id.includes("@hookform")) return "hookform";
+            return "vendor";
+          }
         },
       },
     },
