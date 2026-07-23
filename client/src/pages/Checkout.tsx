@@ -51,24 +51,32 @@ export default function Checkout() {
     if (!user) return;
 
     let active = true;
-    const loadPreference = async () => {
-      setIsLoading(true);
-      setError(null);
-      setPreferenceId(null);
-
+    const loadPreference = async (retryCount = 0) => {
+      if (retryCount === 0) {
+        setIsLoading(true);
+        setError(null);
+      }
+      
       try {
         const result = await createPreference({
           planCode,
           successUrl: `${window.location.origin}/checkout/success`,
           failureUrl: `${window.location.origin}/checkout/failure`,
         });
-        if (active) setPreferenceId(result.preferenceId);
-      } catch (err) {
         if (active) {
-          setError(err instanceof Error ? err.message : "Erro ao criar preferência de pagamento");
+          setPreferenceId(result.preferenceId);
+          setIsLoading(false);
         }
-      } finally {
-        if (active) setIsLoading(false);
+      } catch (err) {
+        console.error(`[Checkout] Tentativa ${retryCount + 1} falhou:`, err);
+        
+        // Se falhou por autenticação ou sincronização, tentar novamente até 3 vezes
+        if (active && retryCount < 3) {
+          setTimeout(() => loadPreference(retryCount + 1), 1500);
+        } else if (active) {
+          setError(err instanceof Error ? err.message : "Erro ao criar preferência de pagamento");
+          setIsLoading(false);
+        }
       }
     };
 
