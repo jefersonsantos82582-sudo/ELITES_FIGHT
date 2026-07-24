@@ -32,6 +32,7 @@ async function findAvailablePort(startPort: number = 3000): Promise<number> {
 }
 
 async function startServer() {
+  console.log("[Server] Iniciando servidor em modo:", process.env.NODE_ENV);
   const app = express();
   const server = createServer(app);
   
