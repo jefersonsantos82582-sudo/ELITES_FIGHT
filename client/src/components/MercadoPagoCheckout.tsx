@@ -173,7 +173,7 @@ export default function MercadoPagoCheckout({
   return (
     <div className="w-full space-y-4">
       {/* Debug Info - Remover em produção */}
-      {process.env.NODE_ENV === "development" && debugInfo && (
+      {import.meta.env.DEV && debugInfo && (
         <div className="text-xs text-muted-foreground bg-muted/50 p-2 rounded border border-border/30">
           Debug: {debugInfo}
         </div>

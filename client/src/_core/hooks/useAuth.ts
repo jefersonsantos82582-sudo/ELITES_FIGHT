@@ -69,7 +69,7 @@ export function useAuth(options?: UseAuthOptions) {
           const token = await result.user.getIdToken(true);
           localStorage.setItem("firebase-token", token);
           // Definir cookie para persistência robusta no servidor
-          document.cookie = `${COOKIE_NAME}=${token}; path=/; max-age=3600; SameSite=Lax`;
+          document.cookie = `${COOKIE_NAME}=${token}; path=/; max-age=2592000; SameSite=Lax`;
 
           // Recuperar destino salvo antes do redirect
           const savedPath = sessionStorage.getItem("auth-redirect-path") || "/dashboard";
@@ -101,18 +101,17 @@ export function useAuth(options?: UseAuthOptions) {
           if (user) {
             setIsSyncing(true);
             // Pegar o token imediatamente e forçar atualização
-            const token = await user.getIdToken(true);
+            const token = await user.getIdToken(); // Removido force refresh para ser mais rápido
             
             // Garantir persistência imediata antes de qualquer chamada de API
             localStorage.setItem("firebase-token", token);
             // Tunnel de emergência: definir o cookie imediatamente com o token
-            document.cookie = `${COOKIE_NAME}=${token}; path=/; max-age=3600; SameSite=Lax`;
+            document.cookie = `${COOKIE_NAME}=${token}; path=/; max-age=2592000; SameSite=Lax`;
             
             console.log("[Auth] Token sincronizado, disparando refetch...");
 
             // Invalidar e refetch imediato para garantir que o servidor veja o usuário
-            await utils.auth.me.invalidate();
-            await utils.auth.me.refetch();
+            await utils.auth.me.refetch(); // Refetch direto é mais rápido que invalidate+refetch
           } else {
             localStorage.removeItem("firebase-token");
             document.cookie = `${COOKIE_NAME}=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT`;
@@ -149,7 +148,9 @@ export function useAuth(options?: UseAuthOptions) {
     if (redirectToDashboardOnLogin && meQuery.data && !meQuery.isLoading) {
       // Redireciona para a tela de loading que depois vai para o dashboard
       const timer = setTimeout(() => {
-        setLocation("/loading");
+        if (window.location.pathname === "/" || window.location.pathname === "/login") {
+          setLocation("/dashboard");
+        }
       }, 100);
       return () => clearTimeout(timer);
     }
@@ -166,7 +167,8 @@ export function useAuth(options?: UseAuthOptions) {
       !redirectOnUnauthenticated ||
       fbLoading ||
       meQuery.isLoading ||
-      meQuery.data !== null
+      meQuery.data !== null ||
+      isSyncing
     ) return;
 
     // Se chegamos aqui, o usuário definitivamente não está logado
@@ -197,7 +199,7 @@ export function useAuth(options?: UseAuthOptions) {
           
           // SALVAMENTO CRÍTICO: Garantir que o token esteja no navegador ANTES do redirecionamento
           localStorage.setItem("firebase-token", token);
-          document.cookie = `${COOKIE_NAME}=${token}; path=/; max-age=3600; SameSite=Lax`;
+          document.cookie = `${COOKIE_NAME}=${token}; path=/; max-age=2592000; SameSite=Lax`;
           
           // Sincronizar com o servidor antes de ir para o loading
           await utils.auth.me.invalidate();

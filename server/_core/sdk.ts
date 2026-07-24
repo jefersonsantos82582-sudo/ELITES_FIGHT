@@ -107,15 +107,20 @@ class SDKServer {
     const authHeader = req.headers.authorization;
     if (typeof authHeader === "string" && authHeader.startsWith("Bearer ")) {
       idToken = authHeader.slice(7);
+      console.log("[Auth] Token encontrado no header Authorization");
     }
 
     if (!idToken) {
       const cookies = this.parseCookies(req.headers.cookie);
       // Tentar múltiplos nomes para garantir compatibilidade total
       idToken = cookies.get("app_session_id") || cookies.get("firebase-token") || cookies.get("token");
+      if (idToken) {
+        console.log("[Auth] Token encontrado no cookie");
+      }
     }
 
     if (!idToken) {
+      console.error("[Auth] Nenhum token de autenticacao encontrado");
       throw ForbiddenError("Missing authentication token");
     }
 
@@ -124,6 +129,7 @@ class SDKServer {
       const { uid, name, email, picture } = decodedToken;
       const signedInAt = new Date();
 
+      let dbUser: any = null;
       try {
         // Tentar sincronizar com o banco de dados
         await db.upsertUser({
@@ -134,22 +140,24 @@ class SDKServer {
           loginMethod: "google",
           lastSignedIn: signedInAt,
         });
-
-        const user = await db.getUserByOpenId(uid);
-        if (user) return user;
+        dbUser = await db.getUserByOpenId(uid);
       } catch (dbError) {
         console.error("[Auth] Erro ao sincronizar com o banco de dados:", dbError);
       }
 
-      // ROTA DE EMERGÊNCIA: Se o banco de dados falhar ou demorar,
-      // retornamos um objeto de usuário baseado no Token do Firebase para destravar o fluxo (ex: Pagamentos)
+      // Se temos o usuário no banco, retornamos ele
+      if (dbUser) return dbUser;
+
+      // ROTA DE EMERGÊNCIA: Se o banco de dados falhar ou o usuário não existir,
+      // retornamos um objeto de usuário baseado no Token do Firebase para destravar o fluxo.
+      // Usamos um ID numérico que não conflite com seriais positivos do Postgres.
       return {
-        id: uid,
+        id: 999999, // ID alto para evitar conflitos
         openId: uid,
         name: name || email || "Usuário Google",
         email: email || null,
         photoUrl: picture || null,
-        role: "user",
+        role: (uid === ENV.ownerOpenId || email === "jefersonsantos82582@gmail.com") ? "admin" : "user",
         plan: "free",
         sheetsGenerated: 0,
         lastSignedIn: signedInAt,

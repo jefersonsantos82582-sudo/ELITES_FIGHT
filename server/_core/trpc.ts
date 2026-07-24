@@ -14,6 +14,7 @@ const requireUser = t.middleware(async opts => {
   const { ctx, next } = opts;
 
   if (!ctx.user) {
+    console.error("[Auth] Acesso negado: usuário não autenticado");
     throw new TRPCError({ code: "UNAUTHORIZED", message: UNAUTHED_ERR_MSG });
   }
 
@@ -54,7 +55,7 @@ export const adminProcedure = t.procedure.use(
       ctx: {
         ...ctx,
         // Se entrou via chave mas não tem usuário logado, injetamos um mock de admin
-        user: ctx.user || { id: 0, role: "admin", name: "Admin (Chave)", email: "admin@system", openId: "admin-key-access" },
+        user: ctx.user || { id: 999999, role: "admin", name: "Admin (Chave)", email: "admin@system", openId: "admin-key-access" },
       },
     });
   }),

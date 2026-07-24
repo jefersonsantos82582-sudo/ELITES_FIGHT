@@ -62,10 +62,12 @@ const trpcClient = trpc.createClient({
       transformer: superjson,
       async headers() {
         try {
-          // 1. Tentar pegar o token diretamente do Firebase (mais seguro)
+          // 1. Tentar pegar o token diretamente do Firebase com força de refresh
           const user = auth.currentUser;
           if (user) {
+            // Pegar token atual (mais rápido)
             const token = await user.getIdToken();
+            localStorage.setItem("firebase-token", token);
             return { Authorization: `Bearer ${token}` };
           }
           
@@ -76,6 +78,8 @@ const trpcClient = trpc.createClient({
           }
         } catch (err) {
           console.error("Erro ao obter token do Firebase para o header:", err);
+          // Se o token expirou, limpar localStorage
+          localStorage.removeItem("firebase-token");
         }
         return {};
       },

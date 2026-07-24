@@ -17,7 +17,7 @@ import { useAuth } from "@/_core/hooks/useAuth";
 import { toast } from "sonner";
 
 export default function Generator() {
-  const { user, loading: authLoading } = useAuth();
+  const { user, loading: authLoading, fbUser, isSyncing, login } = useAuth();
   const { data: overview } = trpc.dashboard.overview.useQuery(undefined, {
     enabled: !authLoading && Boolean(user),
     retry: 1,
@@ -47,11 +47,12 @@ export default function Generator() {
       toast.success("Planilha gerada com sucesso!");
     },
     onError: (err) => {
-      // Melhor tratamento de erros de autenticação
-      if (err.message?.includes("login") || err.message?.includes("10001")) {
+      // Tratamento de erros de autenticação e sessão
+      const msg = err.message || "";
+      if (msg.includes("login") || msg.includes("10001") || msg.includes("auth") || msg.includes("session") || msg.includes("unauthorized") || msg.includes("token") || msg.includes("FORBIDDEN")) {
         toast.error("Sua sessão expirou. Por favor, faça login novamente.");
       } else {
-        toast.error(err.message || "Erro ao gerar planilha");
+        toast.error(msg || "Erro ao gerar planilha");
       }
     },
   });
@@ -103,8 +104,8 @@ export default function Generator() {
     });
   };
 
-  // Configurações de cores e temas vindas do admin
-  const { data: settings } = trpc.admin.getSettings.useQuery();
+  // Configurações de cores e temas (rota pública)
+  const { data: settings } = trpc.settings.getAll.useQuery();
   const colorPresets = (settings?.find(s => s.key === "themes")?.value as any[]) || [
     { name: "Ouro Premium", header: "#D4AF37", accent: "#1A1A1A", plan: "free" },
     { name: "Azul Executivo", header: "#1E40AF", accent: "#1E3A8A", plan: "free" },
@@ -124,8 +125,20 @@ export default function Generator() {
     setGenerated(null);
   };
 
+  // Mostrar carregamento enquanto sincroniza
+  if (authLoading || isSyncing || (fbUser && !user)) {
+    return (
+      <DashboardLayout>
+        <div className="flex flex-col items-center justify-center min-h-[60vh] space-y-4">
+          <Loader2 className="h-10 w-10 animate-spin text-primary" />
+          <p className="text-sm text-muted-foreground">Sincronizando sua conta...</p>
+        </div>
+      </DashboardLayout>
+    );
+  }
+
   // Mostrar mensagem se não estiver autenticado
-  if (!authLoading && !user) {
+  if (!user) {
     return (
       <DashboardLayout>
         <div className="flex items-center justify-center min-h-[60vh]">
@@ -135,7 +148,8 @@ export default function Generator() {
             <p className="text-sm text-muted-foreground mb-6">
               Você precisa estar logado para gerar planilhas.
             </p>
-          </Card>
+            <Button onClick={() => login("/generator")} className="w-full">Entrar com Google</Button>
+          </div>
         </div>
       </DashboardLayout>
     );

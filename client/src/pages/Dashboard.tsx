@@ -38,6 +38,13 @@ export default function Dashboard() {
     }
   }, []);
 
+  // Log de debug
+  useEffect(() => {
+    if (isError) {
+      console.error("[Dashboard] Erro ao carregar overview:", error?.message);
+    }
+  }, [isError, error]);
+
   // Fallback: Se o tRPC falhou (erro 10001) mas temos o fbUser,
   // vamos mostrar um Dashboard "parcial" em vez de uma tela de erro bloqueante.
   const showFallback = (isError || !overview) && fbUser;

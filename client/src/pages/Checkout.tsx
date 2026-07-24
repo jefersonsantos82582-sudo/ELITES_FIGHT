@@ -89,14 +89,19 @@ export default function Checkout() {
         console.error(`[Checkout] Tentativa ${retryCount + 1} falhou:`, errorMsg);
         setDebugInfo(`Erro na tentativa ${retryCount + 1}: ${errorMsg}`);
         
-        // Se falhou por autenticação, aguardar e tentar novamente até 3 vezes
-        if (active && retryCount < 3 && errorMsg.includes("login")) {
-          console.log(`[Checkout] Erro de autenticação, tentando novamente em 2s...`);
+        // Tentar novamente até 3 vezes para qualquer erro de autenticação/sessão
+        if (active && retryCount < 3 && (errorMsg.includes("login") || errorMsg.includes("auth") || errorMsg.includes("session") || errorMsg.includes("unauthorized") || errorMsg.includes("token"))) {
+          console.log(`[Checkout] Erro de autenticação/sessão, tentando novamente em 2s...`);
           setTimeout(() => loadPreference(retryCount + 1), 2000);
         } else if (active) {
           console.error("[Checkout] Erro final:", errorMsg);
           setError(errorMsg);
           setDebugInfo(`Erro final: ${errorMsg}`);
+          setIsLoading(false);
+        }
+      } finally {
+        // Garantir que o loading sempre seja removido em caso de erro não tratado
+        if (!active) {
           setIsLoading(false);
         }
       }
@@ -134,13 +139,15 @@ export default function Checkout() {
   }
 
   // Se não tem user do servidor mas temos fbUser, mostrar tela de espera
-  if (!user && fbUser && isSyncing) {
+  if (!user && fbUser) {
     return (
       <DashboardLayout>
         <div className="flex min-h-screen items-center justify-center bg-background">
           <div className="text-center">
             <Loader2 className="h-10 w-10 animate-spin text-primary mx-auto mb-4" />
-            <p className="text-sm text-muted-foreground">Sincronizando sua sessão...</p>
+            <p className="text-sm text-muted-foreground">
+              {isSyncing ? "Sincronizando sua sessão..." : "Carregando perfil..."}
+            </p>
             {debugInfo && <p className="text-xs text-muted-foreground mt-2">{debugInfo}</p>}
           </div>
         </div>
