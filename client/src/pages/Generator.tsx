@@ -149,7 +149,7 @@ export default function Generator() {
               Você precisa estar logado para gerar planilhas.
             </p>
             <Button onClick={() => login("/generator")} className="w-full">Entrar com Google</Button>
-          </div>
+          </Card>
         </div>
       </DashboardLayout>
     );
