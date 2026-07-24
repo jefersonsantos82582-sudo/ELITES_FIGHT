@@ -16,7 +16,7 @@ import { useAuth } from "@/_core/hooks/useAuth";
 import { toast } from "sonner";
 
 export default function AIGenerator() {
-  const { user, loading: authLoading } = useAuth();
+  const { user, loading: authLoading, fbUser, isSyncing, login } = useAuth();
   const { data: overview } = trpc.dashboard.overview.useQuery(undefined, {
     enabled: !authLoading && Boolean(user),
     retry: 1,
@@ -89,11 +89,31 @@ export default function AIGenerator() {
     { name: "Cinza Elegante", header: "#4B5563", accent: "#1F2937" },
   ];
 
-  if (authLoading) {
+  // Mostrar carregamento enquanto sincroniza
+  if (authLoading || isSyncing || (fbUser && !user)) {
     return (
       <DashboardLayout>
-        <div className="flex h-96 items-center justify-center">
-          <div className="animate-pulse text-muted-foreground">Carregando...</div>
+        <div className="flex flex-col h-96 items-center justify-center space-y-4">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+          <p className="text-sm text-muted-foreground">Sincronizando sua conta...</p>
+        </div>
+      </DashboardLayout>
+    );
+  }
+
+  // Mostrar mensagem se não estiver autenticado
+  if (!user) {
+    return (
+      <DashboardLayout>
+        <div className="flex flex-col items-center justify-center h-96 space-y-4">
+          <div className="p-3 bg-destructive/10 rounded-full">
+            <AlertCircle className="h-8 w-8 text-destructive" />
+          </div>
+          <div className="text-center">
+            <h2 className="text-xl font-bold">Autenticação Necessária</h2>
+            <p className="text-muted-foreground">Você precisa estar logado para usar o Gerador IA.</p>
+          </div>
+          <Button onClick={() => login("/generator-ia")} className="w-full max-w-xs">Entrar com Google</Button>
         </div>
       </DashboardLayout>
     );

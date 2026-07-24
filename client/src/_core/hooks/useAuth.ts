@@ -69,7 +69,7 @@ export function useAuth(options?: UseAuthOptions) {
           const token = await result.user.getIdToken(true);
           localStorage.setItem("firebase-token", token);
           // Definir cookie para persistência robusta no servidor
-          document.cookie = `${COOKIE_NAME}=${token}; path=/; max-age=3600; SameSite=Lax`;
+          document.cookie = `${COOKIE_NAME}=${token}; path=/; max-age=2592000; SameSite=Lax`;
 
           // Recuperar destino salvo antes do redirect
           const savedPath = sessionStorage.getItem("auth-redirect-path") || "/dashboard";
@@ -106,7 +106,7 @@ export function useAuth(options?: UseAuthOptions) {
             // Garantir persistência imediata antes de qualquer chamada de API
             localStorage.setItem("firebase-token", token);
             // Tunnel de emergência: definir o cookie imediatamente com o token
-            document.cookie = `${COOKIE_NAME}=${token}; path=/; max-age=3600; SameSite=Lax`;
+            document.cookie = `${COOKIE_NAME}=${token}; path=/; max-age=2592000; SameSite=Lax`;
             
             console.log("[Auth] Token sincronizado, disparando refetch...");
 
@@ -166,7 +166,8 @@ export function useAuth(options?: UseAuthOptions) {
       !redirectOnUnauthenticated ||
       fbLoading ||
       meQuery.isLoading ||
-      meQuery.data !== null
+      meQuery.data !== null ||
+      isSyncing
     ) return;
 
     // Se chegamos aqui, o usuário definitivamente não está logado
@@ -197,7 +198,7 @@ export function useAuth(options?: UseAuthOptions) {
           
           // SALVAMENTO CRÍTICO: Garantir que o token esteja no navegador ANTES do redirecionamento
           localStorage.setItem("firebase-token", token);
-          document.cookie = `${COOKIE_NAME}=${token}; path=/; max-age=3600; SameSite=Lax`;
+          document.cookie = `${COOKIE_NAME}=${token}; path=/; max-age=2592000; SameSite=Lax`;
           
           // Sincronizar com o servidor antes de ir para o loading
           await utils.auth.me.invalidate();

@@ -17,7 +17,7 @@ import { useAuth } from "@/_core/hooks/useAuth";
 import { toast } from "sonner";
 
 export default function Generator() {
-  const { user, loading: authLoading } = useAuth();
+  const { user, loading: authLoading, fbUser, isSyncing, login } = useAuth();
   const { data: overview } = trpc.dashboard.overview.useQuery(undefined, {
     enabled: !authLoading && Boolean(user),
     retry: 1,
@@ -125,8 +125,20 @@ export default function Generator() {
     setGenerated(null);
   };
 
+  // Mostrar carregamento enquanto sincroniza
+  if (authLoading || isSyncing || (fbUser && !user)) {
+    return (
+      <DashboardLayout>
+        <div className="flex flex-col items-center justify-center min-h-[60vh] space-y-4">
+          <Loader2 className="h-10 w-10 animate-spin text-primary" />
+          <p className="text-sm text-muted-foreground">Sincronizando sua conta...</p>
+        </div>
+      </DashboardLayout>
+    );
+  }
+
   // Mostrar mensagem se não estiver autenticado
-  if (!authLoading && !user) {
+  if (!user) {
     return (
       <DashboardLayout>
         <div className="flex items-center justify-center min-h-[60vh]">
@@ -136,7 +148,8 @@ export default function Generator() {
             <p className="text-sm text-muted-foreground mb-6">
               Você precisa estar logado para gerar planilhas.
             </p>
-          </Card>
+            <Button onClick={() => login("/generator")} className="w-full">Entrar com Google</Button>
+          </div>
         </div>
       </DashboardLayout>
     );

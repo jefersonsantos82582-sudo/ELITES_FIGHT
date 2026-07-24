@@ -148,8 +148,10 @@ class SDKServer {
 
       // ROTA DE EMERGÊNCIA: Se o banco de dados falhar ou demorar,
       // retornamos um objeto de usuário baseado no Token do Firebase para destravar o fluxo (ex: Pagamentos)
+      // NOTA: Usamos um ID numérico negativo temporário para evitar quebra de tipos no frontend/backend
+      // que esperam um número (serial do Postgres), enquanto o openId mantém o UID original do Firebase.
       return {
-        id: uid,
+        id: -1, 
         openId: uid,
         name: name || email || "Usuário Google",
         email: email || null,

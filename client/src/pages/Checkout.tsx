@@ -139,13 +139,15 @@ export default function Checkout() {
   }
 
   // Se não tem user do servidor mas temos fbUser, mostrar tela de espera
-  if (!user && fbUser && isSyncing) {
+  if (!user && fbUser) {
     return (
       <DashboardLayout>
         <div className="flex min-h-screen items-center justify-center bg-background">
           <div className="text-center">
             <Loader2 className="h-10 w-10 animate-spin text-primary mx-auto mb-4" />
-            <p className="text-sm text-muted-foreground">Sincronizando sua sessão...</p>
+            <p className="text-sm text-muted-foreground">
+              {isSyncing ? "Sincronizando sua sessão..." : "Carregando perfil..."}
+            </p>
             {debugInfo && <p className="text-xs text-muted-foreground mt-2">{debugInfo}</p>}
           </div>
         </div>
