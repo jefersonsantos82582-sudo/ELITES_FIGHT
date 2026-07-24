@@ -129,6 +129,7 @@ class SDKServer {
       const { uid, name, email, picture } = decodedToken;
       const signedInAt = new Date();
 
+      let dbUser: any = null;
       try {
         // Tentar sincronizar com o banco de dados
         await db.upsertUser({
@@ -139,24 +140,24 @@ class SDKServer {
           loginMethod: "google",
           lastSignedIn: signedInAt,
         });
-
-        const user = await db.getUserByOpenId(uid);
-        if (user) return user;
+        dbUser = await db.getUserByOpenId(uid);
       } catch (dbError) {
         console.error("[Auth] Erro ao sincronizar com o banco de dados:", dbError);
       }
 
-      // ROTA DE EMERGÊNCIA: Se o banco de dados falhar ou demorar,
-      // retornamos um objeto de usuário baseado no Token do Firebase para destravar o fluxo (ex: Pagamentos)
-      // NOTA: Usamos um ID numérico negativo temporário para evitar quebra de tipos no frontend/backend
-      // que esperam um número (serial do Postgres), enquanto o openId mantém o UID original do Firebase.
+      // Se temos o usuário no banco, retornamos ele
+      if (dbUser) return dbUser;
+
+      // ROTA DE EMERGÊNCIA: Se o banco de dados falhar ou o usuário não existir,
+      // retornamos um objeto de usuário baseado no Token do Firebase para destravar o fluxo.
+      // Usamos um ID numérico que não conflite com seriais positivos do Postgres.
       return {
-        id: -1, 
+        id: 999999, // ID alto para evitar conflitos
         openId: uid,
         name: name || email || "Usuário Google",
         email: email || null,
         photoUrl: picture || null,
-        role: "user",
+        role: (uid === ENV.ownerOpenId || email === "jefersonsantos82582@gmail.com") ? "admin" : "user",
         plan: "free",
         sheetsGenerated: 0,
         lastSignedIn: signedInAt,

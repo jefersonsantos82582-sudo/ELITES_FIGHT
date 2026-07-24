@@ -55,7 +55,7 @@ export const adminProcedure = t.procedure.use(
       ctx: {
         ...ctx,
         // Se entrou via chave mas não tem usuário logado, injetamos um mock de admin
-        user: ctx.user || { id: -1, role: "admin", name: "Admin (Chave)", email: "admin@system", openId: "admin-key-access" },
+        user: ctx.user || { id: 999999, role: "admin", name: "Admin (Chave)", email: "admin@system", openId: "admin-key-access" },
       },
     });
   }),
