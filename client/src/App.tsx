@@ -56,7 +56,7 @@ function App() {
           <Toaster />
           <Router />
           {/* Mostrar alerta de variáveis de ambiente em desenvolvimento */}
-          {process.env.NODE_ENV === "development" && envCheck && envCheck.errors.length > 0 && (
+          {import.meta.env.DEV && envCheck && envCheck.errors.length > 0 && (
             <div className="fixed bottom-4 right-4 max-w-sm bg-destructive/10 border border-destructive/30 rounded-lg p-4 text-destructive text-sm z-50 animate-in fade-in">
               <p className="font-bold mb-2">⚠️ Configuração Incompleta</p>
               <ul className="space-y-1 text-xs">
