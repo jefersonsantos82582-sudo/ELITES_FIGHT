@@ -8,12 +8,12 @@
   },
   "scripts": {
     "dev": "NODE_ENV=development tsx watch server/_core/index.ts",
-    "build": "vite build && esbuild server/_core/index.ts --platform=node --bundle --format=esm --outfile=dist/index.js --packages=external && esbuild scripts/subscription-cron.ts --platform=node --bundle --format=esm --outfile=dist/cron.js --packages=external",
+    "build": "mkdir -p dist && vite build && esbuild server/_core/index.ts --platform=node --bundle --format=esm --outfile=dist/index.js --packages=external && esbuild scripts/subscription-cron.ts --platform=node --bundle --format=esm --outfile=dist/cron.js --packages=external",
     "start": "NODE_ENV=production node dist/index.js",
     "cron": "NODE_ENV=production node dist/cron.js",
     "check": "tsc --noEmit",
     "db:push": "npx drizzle-kit push",
-    "render-build": "npm run db:push && npm run build"
+    "render-build": "npm run build && npm run db:push"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.693.0",
