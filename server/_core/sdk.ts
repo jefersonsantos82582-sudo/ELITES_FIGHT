@@ -107,15 +107,20 @@ class SDKServer {
     const authHeader = req.headers.authorization;
     if (typeof authHeader === "string" && authHeader.startsWith("Bearer ")) {
       idToken = authHeader.slice(7);
+      console.log("[Auth] Token encontrado no header Authorization");
     }
 
     if (!idToken) {
       const cookies = this.parseCookies(req.headers.cookie);
       // Tentar múltiplos nomes para garantir compatibilidade total
       idToken = cookies.get("app_session_id") || cookies.get("firebase-token") || cookies.get("token");
+      if (idToken) {
+        console.log("[Auth] Token encontrado no cookie");
+      }
     }
 
     if (!idToken) {
+      console.error("[Auth] Nenhum token de autenticacao encontrado");
       throw ForbiddenError("Missing authentication token");
     }
 

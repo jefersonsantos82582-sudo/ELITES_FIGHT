@@ -65,9 +65,9 @@ class MercadoPagoService {
         init_point: response.data.init_point,
         sandbox_init_point: response.data.sandbox_init_point,
       };
-    } catch (error) {
-      console.error('Erro ao criar preferência no Mercado Pago:', error);
-      throw new Error('Falha ao criar preferência de pagamento');
+    } catch (error: any) {
+      console.error('Erro ao criar preferencia no Mercado Pago:', error?.response?.data || error?.message);
+      throw new Error(error?.response?.data?.message || 'Falha ao criar preferencia de pagamento');
     }
   }
 

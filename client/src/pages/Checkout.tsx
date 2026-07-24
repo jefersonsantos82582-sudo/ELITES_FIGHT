@@ -99,6 +99,11 @@ export default function Checkout() {
           setDebugInfo(`Erro final: ${errorMsg}`);
           setIsLoading(false);
         }
+      } finally {
+        // Garantir que o loading sempre seja removido em caso de erro não tratado
+        if (!active) {
+          setIsLoading(false);
+        }
       }
     };
 
