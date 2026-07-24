@@ -32,6 +32,9 @@ function Router() {
       <Route path="/checkout/failure" component={CheckoutFailure} />
       <Route path="/loading" component={Loading} />
       <Route path="/admin" component={Admin} />
+      <Route path="/painel" component={Admin} />
+      <Route path="/dashboard/admin" component={Admin} />
+      <Route path="/dashboard/painel" component={Admin} />
       <Route path="/404" component={NotFound} />
       <Route component={NotFound} />
     </Switch>

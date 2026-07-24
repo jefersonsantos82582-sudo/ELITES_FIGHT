@@ -89,9 +89,9 @@ export default function Checkout() {
         console.error(`[Checkout] Tentativa ${retryCount + 1} falhou:`, errorMsg);
         setDebugInfo(`Erro na tentativa ${retryCount + 1}: ${errorMsg}`);
         
-        // Se falhou por autenticação, aguardar e tentar novamente até 3 vezes
-        if (active && retryCount < 3 && errorMsg.includes("login")) {
-          console.log(`[Checkout] Erro de autenticação, tentando novamente em 2s...`);
+        // Tentar novamente até 3 vezes para qualquer erro de autenticação/sessão
+        if (active && retryCount < 3 && (errorMsg.includes("login") || errorMsg.includes("auth") || errorMsg.includes("session") || errorMsg.includes("unauthorized") || errorMsg.includes("token"))) {
+          console.log(`[Checkout] Erro de autenticação/sessão, tentando novamente em 2s...`);
           setTimeout(() => loadPreference(retryCount + 1), 2000);
         } else if (active) {
           console.error("[Checkout] Erro final:", errorMsg);
