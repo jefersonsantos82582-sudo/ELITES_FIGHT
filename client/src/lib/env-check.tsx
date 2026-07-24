@@ -48,21 +48,3 @@ export function checkEnvironmentVariables(): EnvCheckResult {
     warnings,
   };
 }
-
-export function displayEnvErrors(result: EnvCheckResult) {
-  if (result.errors.length === 0) return null;
-
-  return (
-    <div className="fixed bottom-4 right-4 max-w-sm bg-destructive/10 border border-destructive/30 rounded-lg p-4 text-destructive text-sm z-50">
-      <p className="font-bold mb-2">⚠️ Configuração Incompleta</p>
-      <ul className="space-y-1 text-xs">
-        {result.errors.map((err, i) => (
-          <li key={i}>{err}</li>
-        ))}
-      </ul>
-      <p className="text-xs text-muted-foreground mt-3">
-        Configure as variáveis de ambiente no Render Dashboard
-      </p>
-    </div>
-  );
-}
