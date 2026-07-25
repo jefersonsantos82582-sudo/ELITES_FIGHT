@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
-import { CheckCircle, ArrowRight, Loader2 } from "lucide-react";
+import { CheckCircle, ArrowRight, Loader2, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import Navbar from "@/components/Navbar";
@@ -13,51 +13,59 @@ export default function CheckoutSuccess() {
   const { user } = useAuth();
   const utils = trpc.useUtils();
   const [isRefreshing, setIsRefreshing] = useState(true);
+  const [attempts, setAttempts] = useState(0);
+
+  // Máximo 5 tentativas (antes era 10), com 1.5s entre cada (antes 2s)
+  const MAX_ATTEMPTS = 5;
 
   useEffect(() => {
-    // Invalidar todos os caches relevantes para refletir o novo plano
-    // O webhook do Mercado Pago pode levar alguns segundos para processar.
-    // Realizamos múltiplas tentativas para garantir que o usuário veja o plano atualizado.
     let mounted = true;
-    let attempts = 0;
-    const maxAttempts = 10;
 
     const refreshData = async () => {
       if (!mounted) return;
       setIsRefreshing(true);
-      
+
       try {
-        console.log(`[CheckoutSuccess] Tentativa de atualização ${attempts + 1}/${maxAttempts}`);
-        
-        // Invalidar caches
+        console.log(`[CheckoutSuccess] Tentativa ${attempts + 1}/${MAX_ATTEMPTS}`);
+
         await utils.auth.me.invalidate();
         const meResult = await utils.auth.me.refetch();
-        
-        // Se o plano mudou de 'free' para algo premium, ou se já atingimos o limite de tentativas
-        if ((meResult.data?.plan && meResult.data.plan !== "free") || attempts >= maxAttempts - 1) {
+
+        if (meResult.data?.plan && meResult.data.plan !== "free") {
+          // Plano atualizado!
           await utils.dashboard.overview.invalidate();
           await utils.plans.list.invalidate();
           if (mounted) setIsRefreshing(false);
-          console.log("[CheckoutSuccess] Plano atualizado com sucesso!");
-        } else {
-          // Tentar novamente em 2 segundos para ser mais ágil
-          attempts++;
-          setTimeout(refreshData, 2000);
+          console.log("[CheckoutSuccess] Plano atualizado!");
+          return;
+        }
+
+        // Se atingiu max tentativas, liberar mesmo sem confirmação do webhook
+        if (attempts >= MAX_ATTEMPTS - 1) {
+          console.log("[CheckoutSuccess] Atingiu limite de tentativas. Liberando acesso.");
+          await utils.dashboard.overview.invalidate();
+          await utils.plans.list.invalidate();
+          if (mounted) setIsRefreshing(false);
+          return;
+        }
+
+        setAttempts(prev => prev + 1);
+        if (mounted) {
+          setTimeout(refreshData, 1500);
         }
       } catch (err) {
-        console.error("[CheckoutSuccess] Erro ao atualizar dados:", err);
+        console.error("[CheckoutSuccess] Erro ao atualizar:", err);
         if (mounted) setIsRefreshing(false);
       }
     };
 
-    // Primeira tentativa após um pequeno delay para o webhook processar
-    const initialTimer = setTimeout(refreshData, 2000);
-    
+    const initialTimer = setTimeout(refreshData, 1500);
+
     return () => {
       mounted = false;
       clearTimeout(initialTimer);
     };
-  }, [utils]);
+  }, [utils, attempts]);
 
   return (
     <div className="min-h-screen bg-background bg-grid-pattern flex flex-col">
@@ -76,19 +84,18 @@ export default function CheckoutSuccess() {
             {isRefreshing && (
               <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground mb-6">
                 <Loader2 className="w-4 h-4 animate-spin" />
-                Atualizando seu plano...
+                Atualizando seu plano... ({attempts + 1}/{MAX_ATTEMPTS})
               </div>
             )}
 
-            <Button 
+            <Button
               className="w-full bg-gold-gradient text-black font-semibold"
               onClick={() => setLocation("/dashboard")}
-              disabled={isRefreshing}
             >
               {isRefreshing ? (
                 <>
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  Aguarde...
+                  <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                  Ir para o Dashboard (em breve)
                 </>
               ) : (
                 <>
@@ -97,6 +104,12 @@ export default function CheckoutSuccess() {
                 </>
               )}
             </Button>
+
+            {!isRefreshing && (
+              <p className="text-xs text-muted-foreground mt-3">
+                Se seu plano ainda não apareceu atualizado, atualize a página em alguns segundos.
+              </p>
+            )}
           </Card>
         </div>
       </div>

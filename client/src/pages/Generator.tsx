@@ -19,16 +19,27 @@ import { toast } from "sonner";
 export default function Generator() {
   const { user, loading: authLoading, fbUser, isSyncing, login } = useAuth();
   const { data: overview } = trpc.dashboard.overview.useQuery(undefined, {
-    enabled: !authLoading && Boolean(user),
+    enabled: Boolean(user),
     retry: 1,
     refetchOnWindowFocus: false,
+    staleTime: 30000,
   });
+  const { data: categories } = trpc.categories.list.useQuery(undefined, {
+    retry: 1,
+    staleTime: 60000,
+  });
+  const { data: templates } = trpc.templates.list.useQuery(undefined, {
+    retry: 1,
+    staleTime: 60000,
+  });
+  const { data: settings } = trpc.settings.getAll.useQuery(undefined, {
+    retry: 1,
+    staleTime: 60000,
+  });
+
   const [location] = useLocation();
   const params = new URLSearchParams(location.split("?")[1] || "");
   const presetTemplateId = params.get("templateId");
-
-  const { data: categories } = trpc.categories.list.useQuery();
-  const { data: templates } = trpc.templates.list.useQuery();
 
   const [selectedCategory, setSelectedCategory] = useState<string>("");
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>(presetTemplateId || "");
@@ -37,6 +48,7 @@ export default function Generator() {
   const [accentColor, setAccentColor] = useState("#1A1A1A");
   const [extraInfo, setExtraInfo] = useState("");
   const [generated, setGenerated] = useState<{ fileUrl: string; fileName: string } | null>(null);
+  const [authRetryCount, setAuthRetryCount] = useState(0);
 
   const userPlan = (user?.plan as "free" | "pro" | "elite") || "free";
   const planOrder = { free: 0, pro: 1, elite: 2 } as const;
@@ -52,8 +64,13 @@ export default function Generator() {
           msg.includes("session") || msg.includes("unauthorized") ||
           msg.includes("token") || msg.includes("FORBIDDEN")) {
         toast.error("Sua sessão expirou. Tente novamente.");
-        // Tentar forçar refetch do auth
         trpc.auth.me.invalidate();
+        if (authRetryCount < 2) {
+          setTimeout(() => {
+            setAuthRetryCount(prev => prev + 1);
+            trpc.auth.me.refetch();
+          }, 2000);
+        }
       } else if (msg.includes("limite")) {
         toast.error(msg);
       } else if (msg.includes("plano")) {
@@ -111,8 +128,6 @@ export default function Generator() {
     });
   };
 
-  // Configurações de cores e temas
-  const { data: settings } = trpc.settings.getAll.useQuery();
   const colorPresets = (settings?.find(s => s.key === "themes")?.value as any[]) || [
     { name: "Ouro Premium", header: "#D4AF37", accent: "#1A1A1A", plan: "free" },
     { name: "Azul Executivo", header: "#1E40AF", accent: "#1E3A8A", plan: "free" },
@@ -130,19 +145,19 @@ export default function Generator() {
     setGenerated(null);
   };
 
-  // Mostrar carregamento inicial
-  if (authLoading) {
+  // Se fbUser existe mas user não chegou (isSyncing), mostrar loading leve
+  if (fbUser && !user && !authLoading && !isSyncing) {
     return (
       <DashboardLayout>
         <div className="flex flex-col items-center justify-center min-h-[60vh] space-y-4">
           <Loader2 className="h-10 w-10 animate-spin text-primary" />
-          <p className="text-sm text-muted-foreground">Carregando...</p>
+          <p className="text-sm text-muted-foreground">Sincronizando seu perfil...</p>
         </div>
       </DashboardLayout>
     );
   }
 
-  // Mostrar mensagem se não estiver autenticado
+  // Mostrar mensagem se não estiver autenticado (sem loading infinito)
   if (!user && !fbUser) {
     return (
       <DashboardLayout>

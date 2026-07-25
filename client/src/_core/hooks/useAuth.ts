@@ -21,6 +21,9 @@ type UseAuthOptions = {
   redirectToDashboardOnLogin?: boolean;
 };
 
+// TIMEOUT: Se o Firebase não responder em 8 segundos, forçar avanço
+const FIREBASE_TIMEOUT_MS = 8000;
+
 export function useAuth(options?: UseAuthOptions) {
   const {
     redirectOnUnauthenticated = false,
@@ -31,10 +34,6 @@ export function useAuth(options?: UseAuthOptions) {
   const utils = trpc.useUtils();
   const [, setLocation] = useLocation();
   const [fbUser, setFbUser] = useState<FirebaseUser | null>(null);
-
-  // fbLoading começa true e só vira false depois que:
-  // 1. getRedirectResult() terminar (pode haver redirect do Google pendente)
-  // 2. onAuthStateChanged disparar pela primeira vez
   const [fbLoading, setFbLoading] = useState(true);
   const [isSyncing, setIsSyncing] = useState(false);
   const [sessionError, setSessionError] = useState<Error | null>(null);
@@ -44,68 +43,80 @@ export function useAuth(options?: UseAuthOptions) {
   const meQuery = trpc.auth.me.useQuery(undefined, {
     retry: false,
     refetchOnWindowFocus: false,
-    // Só habilita a query depois que o Firebase terminou de inicializar
     enabled: !fbLoading,
+    staleTime: 30000, // cache válido por 30s
   });
 
-  // ===== INICIALIZAÇÃO: processar redirect result + listener de auth =====
-  // Este efeito roda UMA vez na montagem e garante a ordem correta:
-  // 1. Primeiro tenta processar o resultado de um redirect do Google
-  // 2. Depois registra o listener onAuthStateChanged
+  // ===== INICIALIZAÇÃO COM TIMEOUT =====
   useEffect(() => {
     if (authInitialized.current) return;
     authInitialized.current = true;
 
     let mounted = true;
+    let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
 
     async function initialize() {
+      // TIMEOUT DE SEGURANÇA: Se Firebase não responder em 8s, forçar avanço
+      timeoutHandle = setTimeout(() => {
+        if (mounted) {
+          console.warn("[Auth] Timeout do Firebase — avançando sem sessão Firebase");
+          setFbLoading(false);
+        }
+      }, FIREBASE_TIMEOUT_MS);
+
       try {
-        // Passo 1: Verificar se há resultado de redirect do Google pendente
-        // Isso acontece quando o usuário volta do fluxo de autenticação mobile
+        // Passo 1: Verificar resultado de redirect do Google
         const result = await getRedirectResult(firebaseAuth);
 
         if (result && result.user && mounted) {
           console.log("[Auth] Retorno de redirect do Google detectado");
           const token = await result.user.getIdToken(true);
           localStorage.setItem("firebase-token", token);
-          // Definir cookie para persistência robusta no servidor
           document.cookie = `${COOKIE_NAME}=${token}; path=/; max-age=2592000; SameSite=Lax`;
 
-          // Recuperar destino salvo antes do redirect
           const savedPath = sessionStorage.getItem("auth-redirect-path") || "/dashboard";
           sessionStorage.removeItem("auth-redirect-path");
 
-          // Invalidar cache e redirecionar para loading
           await utils.auth.me.invalidate();
 
           if (mounted) {
             setFbUser(result.user);
             setFbLoading(false);
             setLocation("/loading");
-            return; // onAuthStateChanged vai disparar logo em seguida, mas já tratamos
+            return;
           }
         }
       } catch (error: any) {
-        // Erros de redirect são comuns (ex: usuário cancelou) — não bloquear o fluxo
         console.warn("[Auth] getRedirectResult:", error?.code || error?.message);
       }
 
       if (!mounted) return;
 
-      // Passo 2: Registrar listener principal de autenticação
+      // Passo 2: Registrar listener de auth
       const unsubscribe = onAuthStateChanged(firebaseAuth, async (user) => {
         if (!mounted) return;
         setFbUser(user);
 
+        // Cancelar timeout pois Firebase respondeu
+        if (timeoutHandle) {
+          clearTimeout(timeoutHandle);
+          timeoutHandle = null;
+        }
+
         try {
           if (user) {
             setIsSyncing(true);
-            const token = await user.getIdToken();
-            
+            // Timeout no getIdToken para não travar
+            const token = await Promise.race([
+              user.getIdToken(),
+              new Promise<never>((_, reject) =>
+                setTimeout(() => reject(new Error("Timeout getIdToken")), 5000)
+              ),
+            ]);
+
             localStorage.setItem("firebase-token", token);
             document.cookie = `${COOKIE_NAME}=${token}; path=/; max-age=2592000; SameSite=Lax`;
-            
-            console.log("[Auth] Token sincronizado, disparando refetch...");
+
             await utils.auth.me.refetch();
           } else {
             localStorage.removeItem("firebase-token");
@@ -115,6 +126,7 @@ export function useAuth(options?: UseAuthOptions) {
           }
         } catch (error) {
           console.error("[Auth] Falha ao atualizar sessão:", error);
+          // Mesmo com erro, não bloquear — avançar
         } finally {
           if (mounted) {
             setFbLoading(false);
@@ -134,14 +146,14 @@ export function useAuth(options?: UseAuthOptions) {
 
     return () => {
       mounted = false;
+      if (timeoutHandle) clearTimeout(timeoutHandle);
       unsubscribeFn?.();
     };
-  }, []); // Sem dependências — roda apenas uma vez
+  }, []);
 
   // ===== REDIRECIONAR PARA DASHBOARD APÓS LOGIN =====
   useEffect(() => {
     if (redirectToDashboardOnLogin && meQuery.data && !meQuery.isLoading) {
-      // Redireciona para a tela de loading que depois vai para o dashboard
       const timer = setTimeout(() => {
         if (window.location.pathname === "/" || window.location.pathname === "/login") {
           setLocation("/dashboard");
@@ -153,11 +165,6 @@ export function useAuth(options?: UseAuthOptions) {
 
   // ===== REDIRECIONAR PARA LOGIN SE NÃO AUTENTICADO =====
   useEffect(() => {
-    // Só redireciona se:
-    // 1. A opção estiver ativa
-    // 2. O Firebase já terminou de carregar (fbLoading === false)
-    // 3. A query do usuário já terminou (isLoading === false)
-    // 4. NÃO existe usuário (meQuery.data === null)
     if (
       !redirectOnUnauthenticated ||
       fbLoading ||
@@ -166,14 +173,13 @@ export function useAuth(options?: UseAuthOptions) {
       isSyncing
     ) return;
 
-    // Se chegamos aqui, o usuário definitivamente não está logado
     if (redirectPath && window.location.pathname !== redirectPath) {
       console.log("[Auth] Redirecionando para login: não autenticado");
       setLocation(redirectPath);
     }
   }, [redirectOnUnauthenticated, redirectPath, fbLoading, meQuery.isLoading, setLocation, meQuery.data]);
 
-  // ===== FUNÇÃO DE LOGIN =====
+  // ===== FUNÇÃO DE LOGIN COM TIMEOUT =====
   const login = useCallback(async (customRedirect = "/dashboard") => {
     setSessionError(null);
     if (loginPromiseRef.current) return loginPromiseRef.current;
@@ -187,27 +193,21 @@ export function useAuth(options?: UseAuthOptions) {
         provider.addScope("email");
         provider.setCustomParameters({ prompt: "select_account" });
 
-        // Tentar popup (funciona em desktop e alguns browsers mobile)
         try {
           const result = await signInWithPopup(firebaseAuth, provider);
           const token = await result.user.getIdToken(true);
-          
-          // SALVAMENTO CRÍTICO: Garantir que o token esteja no navegador ANTES do redirecionamento
+
           localStorage.setItem("firebase-token", token);
           document.cookie = `${COOKIE_NAME}=${token}; path=/; max-age=2592000; SameSite=Lax`;
-          
-          // Sincronizar com o servidor antes de ir para o loading
+
           await utils.auth.me.invalidate();
           await utils.auth.me.refetch();
-          
+
           setLocation("/loading");
         } catch (popupError: any) {
-          // Popup bloqueado (muito comum em mobile) → usar redirect
-          // Salvar o destino para recuperar após o retorno do Google
           console.warn("[Auth] Popup bloqueado, usando redirect:", popupError?.code);
           sessionStorage.setItem("auth-redirect-path", customRedirect);
           await signInWithRedirect(firebaseAuth, provider);
-          // A execução para aqui — a página vai recarregar após o redirect
         }
       } catch (error: any) {
         console.error("[Auth] Falha no login:", error);
@@ -237,7 +237,7 @@ export function useAuth(options?: UseAuthOptions) {
     }
   }, [utils, setLocation]);
 
-  // loading é true enquanto o Firebase inicializa ou o servidor está sincronizando
+  // loading: Firebase carregando OU sincronizando com servidor
   const loading = fbLoading || (isSyncing && meQuery.isLoading);
   const user = meQuery.data ?? null;
 

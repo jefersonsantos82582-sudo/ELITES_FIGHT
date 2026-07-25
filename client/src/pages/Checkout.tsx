@@ -1,8 +1,8 @@
 /**
- * Página de Checkout com Mercado Pago - CORRIGIDO
+ * Página de Checkout com Mercado Pago - COM TIMEOUT DE SEGURANÇA
  */
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { useLocation } from "wouter";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { trpc } from "@/lib/trpc";
@@ -22,30 +22,38 @@ export default function Checkout() {
   const [preferenceId, setPreferenceId] = useState<string | null>(null);
   const [retryCount, setRetryCount] = useState(0);
 
-  // Extrair planCode da URL
+  // TIMEOUT GLOBAL: se não criar preferência em 15s, mostrar erro
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const searchParams = new URLSearchParams(window.location.search);
   const requestedPlan = searchParams.get("plan");
   const planCode = requestedPlan === "pro" || requestedPlan === "elite" ? requestedPlan : null;
 
-  // Query para obter informações do plano
   const { data: planInfo } = trpc.payment.getPlanInfo.useQuery(
     { planCode: planCode || "pro" },
-    { enabled: Boolean(planCode) }
+    { enabled: Boolean(planCode), retry: 1, staleTime: 300000 }
   );
 
-  // Mutation para criar preferência de pagamento
   const createPreferenceMutation = trpc.payment.createUpgradePreference.useMutation();
 
   const planFeatures = Array.isArray(planInfo?.features)
     ? planInfo.features.filter((feature): feature is string => typeof feature === "string")
     : [];
 
-  // Função para criar preferência com retry
   const createPreference = useCallback(async () => {
     if (!planCode || !user) return;
 
     setIsLoading(true);
     setError(null);
+
+    // Limpar timeout anterior
+    if (timeoutRef.current) clearTimeout(timeoutRef.current);
+
+    // TIMEOUT: 15 segundos para criar preferência
+    timeoutRef.current = setTimeout(() => {
+      setError("Tempo esgotado ao conectar com o servidor de pagamento. Tente novamente.");
+      setIsLoading(false);
+    }, 15000);
 
     try {
       console.log(`[Checkout] Criando preferência para plano: ${planCode}, tentativa ${retryCount + 1}`);
@@ -56,83 +64,83 @@ export default function Checkout() {
         failureUrl: `${window.location.origin}/checkout/failure`,
       });
 
+      // Limpar timeout pois deu certo
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+        timeoutRef.current = null;
+      }
+
       console.log("[Checkout] Preferência criada:", result.preferenceId);
       setPreferenceId(result.preferenceId);
       setIsLoading(false);
     } catch (err: any) {
+      // Limpar timeout pois deu erro
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+        timeoutRef.current = null;
+      }
+
       const errorMsg = err?.message || "Erro desconhecido";
       console.error(`[Checkout] Erro na tentativa ${retryCount + 1}:`, errorMsg);
 
-      // Retry apenas para erros de autenticação/sessão (até 3 tentativas)
       const isAuthError = errorMsg.includes("login") || errorMsg.includes("10001") ||
         errorMsg.includes("auth") || errorMsg.includes("session") ||
         errorMsg.includes("unauthorized") || errorMsg.includes("token") ||
         errorMsg.includes("FORBIDDEN");
 
-      if (isAuthError && retryCount < 3) {
-        console.log(`[Checkout] Erro de auth, aguardando e retentando em 3s...`);
+      if (isAuthError && retryCount < 2) {
+        console.log(`[Checkout] Erro de auth, retentando em 2s...`);
         setTimeout(() => {
           setRetryCount(prev => prev + 1);
-          // Invalidar cache do auth para forçar refetch
           trpc.auth.me.invalidate();
-        }, 3000);
+          trpc.auth.me.refetch();
+        }, 2000);
       } else {
         setError(errorMsg);
         setIsLoading(false);
       }
     }
-  }, [planCode, user, retryCount, createPreferenceMutation]);
+  }, [planCode, user?.id, retryCount, createPreferenceMutation]);
 
   useEffect(() => {
-    // Se não há planCode válido, voltar para a home
     if (!planCode) {
       setLocation("/");
       return;
     }
 
-    // Se não tem usuário autenticado, aguardar
     if (!user) {
-      if (authLoading || isSyncing) {
+      // Se não tem user e não está carregando, não tentar
+      if (!authLoading && !isSyncing) {
         return;
       }
       return;
     }
 
-    // Usuário autenticado, tentar criar preferência
+    // Usuário autenticado, criar preferência (apenas na primeira vez)
     createPreference();
-  }, [planCode, user?.id, setLocation, authLoading, isSyncing]); // Removido createPreference das deps para evitar loop
+  }, [planCode, user?.id, setLocation, authLoading, isSyncing]);
 
-  // Se não tem user nem fbUser, o DashboardLayout vai mostrar a tela de login
+  // Cleanup timeout ao desmontar
+  useEffect(() => {
+    return () => {
+      if (timeoutRef.current) clearTimeout(timeoutRef.current);
+    };
+  }, []);
+
   if (authLoading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background">
         <div className="text-center">
           <Loader2 className="h-8 w-8 animate-spin text-primary mx-auto mb-4" />
-          <p className="text-sm text-muted-foreground">Carregando...</p>
+          <p className="text-sm text-muted-foreground">Verificando sessão...</p>
         </div>
       </div>
     );
   }
 
-  if (!planCode) {
-    return null;
-  }
+  if (!planCode) return null;
 
-  if (!user && fbUser) {
-    return (
-      <DashboardLayout>
-        <div className="flex min-h-screen items-center justify-center bg-background">
-          <div className="text-center">
-            <Loader2 className="h-10 w-10 animate-spin text-primary mx-auto mb-4" />
-            <p className="text-sm text-muted-foreground">
-              {isSyncing ? "Sincronizando sua sessão..." : "Carregando perfil..."}
-            </p>
-          </div>
-        </div>
-      </DashboardLayout>
-    );
-  }
-
+  // Se não tem user nem fbUser, DashboardLayout vai mostrar tela de login
   if (!user && !fbUser) {
     return (
       <DashboardLayout>
@@ -198,7 +206,7 @@ export default function Checkout() {
               <div className="flex flex-col items-center justify-center py-12 gap-4">
                 <Loader2 className="w-10 h-10 animate-spin text-primary" />
                 <p className="text-sm text-muted-foreground">
-                  {retryCount > 0 ? `Retentando... (${retryCount}/3)` : "Criando seu túnel de pagamento seguro..."}
+                  {retryCount > 0 ? `Retentando... (${retryCount}/2)` : "Preparando seu pagamento seguro..."}
                 </p>
               </div>
             ) : preferenceId ? (
@@ -226,6 +234,7 @@ export default function Checkout() {
                     onError={(err) => {
                       console.error("[Checkout] Erro no checkout:", err);
                       setError(err.message);
+                      setPreferenceId(null);
                     }}
                   />
                 </div>
@@ -233,7 +242,7 @@ export default function Checkout() {
             ) : !error ? (
               <div className="text-center py-12">
                 <Loader2 className="w-8 h-8 animate-spin text-primary mx-auto mb-4" />
-                <p className="text-muted-foreground">Preparando opções de pagamento...</p>
+                <p className="text-muted-foreground">Conectando ao servidor de pagamento...</p>
               </div>
             ) : null}
           </Card>

@@ -12,10 +12,14 @@ const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
       retry: (failureCount, error: any) => {
-        // Não repetir se for erro de autenticação
         if (error?.message === UNAUTHED_ERR_MSG) return false;
         return failureCount < 3;
       },
+      gcTime: 5 * 60 * 1000, // garbage collect após 5 min
+      staleTime: 30000, // cache válido 30s
+    },
+    mutations: {
+      retry: false, // mutações não repetem automaticamente
     },
   },
 });
@@ -25,11 +29,7 @@ const redirectToLoginIfUnauthorized = (error: unknown) => {
   if (typeof window === "undefined") return;
 
   const isUnauthorized = error.message === UNAUTHED_ERR_MSG;
-
   if (!isUnauthorized) return;
-  
-  // REMOVIDO: Limpeza agressiva do token.
-  // Deixamos o useAuth gerenciar o estado do usuário com base no Firebase e na resposta real do servidor.
   console.warn("Usuário não autorizado pelo servidor.");
 };
 
@@ -37,7 +37,7 @@ queryClient.getQueryCache().subscribe(event => {
   if (event.type === "updated" && event.action.type === "error") {
     const error = event.query.state.error;
     redirectToLoginIfUnauthorized(error);
-    console.error("[API Query Error]", error);
+    console.error("[API Query Error]", error?.message);
   }
 });
 
@@ -45,14 +45,14 @@ queryClient.getMutationCache().subscribe(event => {
   if (event.type === "updated" && event.action.type === "error") {
     const error = event.mutation.state.error;
     redirectToLoginIfUnauthorized(error);
-    console.error("[API Mutation Error]", error);
+    console.error("[API Mutation Error]", error?.message);
   }
 });
 
 const getBaseUrl = () => {
-  if (typeof window !== "undefined") return ""; 
-  if (process.env.RENDER_EXTERNAL_URL) return process.env.RENDER_EXTERNAL_URL; 
-  return `http://localhost:${process.env.PORT ?? 3000}`; 
+  if (typeof window !== "undefined") return "";
+  if (process.env.RENDER_EXTERNAL_URL) return process.env.RENDER_EXTERNAL_URL;
+  return `http://localhost:${process.env.PORT ?? 3000}`;
 };
 
 const trpcClient = trpc.createClient({
@@ -62,33 +62,41 @@ const trpcClient = trpc.createClient({
       transformer: superjson,
       async headers() {
         try {
-          // 1. Tentar pegar o token diretamente do Firebase com força de refresh
           const user = auth.currentUser;
           if (user) {
-            const token = await user.getIdToken();
+            // TIMEOUT: getIdToken com timeout de 5s para não travar
+            const token = await Promise.race([
+              user.getIdToken(),
+              new Promise<never>((_, reject) =>
+                setTimeout(() => reject(new Error("Token timeout")), 5000)
+              ),
+            ]);
             localStorage.setItem("firebase-token", token);
-            // Definir cookie também para garantir que o servidor veja a sessão
             document.cookie = `app_session_id=${token}; path=/; max-age=2592000; SameSite=Lax`;
             return { Authorization: `Bearer ${token}` };
           }
-          
-          // 2. Fallback para o token no localStorage (persistência entre reloads)
+
+          // Fallback: token salvo no localStorage
           const fbToken = localStorage.getItem("firebase-token");
           if (fbToken) {
             return { Authorization: `Bearer ${fbToken}` };
           }
         } catch (err) {
-          console.error("Erro ao obter token do Firebase para o header:", err);
-          // Se o token expirou, limpar localStorage
+          console.error("[Auth] Erro ao obter token:", err);
           localStorage.removeItem("firebase-token");
         }
         return {};
       },
       fetch(input, init) {
+        // TIMEOUT GLOBAL: requests não podem travar mais de 30s
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 30000);
+
         return globalThis.fetch(input, {
           ...(init ?? {}),
           credentials: "include",
-        });
+          signal: controller.signal,
+        }).finally(() => clearTimeout(timeout));
       },
     }),
   ],

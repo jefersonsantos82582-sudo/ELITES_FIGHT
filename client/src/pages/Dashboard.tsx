@@ -50,7 +50,7 @@ export default function Dashboard() {
   // vamos mostrar um Dashboard "parcial" em vez de uma tela de erro bloqueante.
   const showFallback = (isError || !overview) && fbUser;
 
-  if (authLoading || (isLoading && !fbUser)) {
+  if (authLoading) {
     return (
       <DashboardLayout>
         <div className="flex flex-col h-96 items-center justify-center space-y-4">

@@ -38,7 +38,15 @@ export default function AIGenerator() {
       toast.success("Planilha gerada com sucesso com IA!");
     },
     onError: (err) => {
-      toast.error(err.message || "Erro ao gerar planilha com IA");
+      const msg = err.message || "";
+      if (msg.includes("login") || msg.includes("10001") || msg.includes("auth") ||
+          msg.includes("session") || msg.includes("unauthorized") || msg.includes("token")) {
+        toast.error("Sua sessão expirou. Tente novamente.");
+        trpc.auth.me.invalidate();
+        setTimeout(() => trpc.auth.me.refetch(), 2000);
+      } else {
+        toast.error(err.message || "Erro ao gerar planilha com IA");
+      }
     },
   });
 
@@ -89,20 +97,20 @@ export default function AIGenerator() {
     { name: "Cinza Elegante", header: "#4B5563", accent: "#1F2937" },
   ];
 
-  // Mostrar carregamento inicial
-  if (authLoading) {
+  // Se fbUser existe mas user não chegou, mostrar loading leve
+  if (fbUser && !user && !authLoading && !isSyncing) {
     return (
       <DashboardLayout>
-        <div className="flex flex-col h-96 items-center justify-center space-y-4">
-          <Loader2 className="h-8 w-8 animate-spin text-primary" />
-          <p className="text-sm text-muted-foreground">Carregando...</p>
+        <div className="flex flex-col items-center justify-center min-h-[60vh] space-y-4">
+          <Loader2 className="h-10 w-10 animate-spin text-primary" />
+          <p className="text-sm text-muted-foreground">Sincronizando seu perfil...</p>
         </div>
       </DashboardLayout>
     );
   }
 
   // Mostrar mensagem se não estiver autenticado
-  if (!user) {
+  if (!user && !fbUser) {
     return (
       <DashboardLayout>
         <div className="flex flex-col items-center justify-center h-96 space-y-4">

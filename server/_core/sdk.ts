@@ -10,6 +10,10 @@ import * as db from "../db";
 
 const FIREBASE_PROJECT_ID = process.env.FIREBASE_PROJECT_ID ?? "elites-fight";
 const FIREBASE_ISSUER = `https://securetoken.google.com/${FIREBASE_PROJECT_ID}`;
+
+// TIMEOUT: jwtVerify não pode travar indefinidamente
+const VERIFY_TIMEOUT_MS = 5000;
+
 const FIREBASE_JWKS = createRemoteJWKSet(
   new URL("https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com"),
 );
@@ -76,29 +80,44 @@ class SDKServer {
   private async verifyFirebaseToken(idToken: string): Promise<VerifiedFirebaseToken> {
     const firebaseAuth = getFirebaseAuth();
     if (firebaseAuth) {
-      return firebaseAuth.verifyIdToken(idToken);
+      try {
+        return await firebaseAuth.verifyIdToken(idToken);
+      } catch (error) {
+        // Se Firebase Admin SDK falhar, tentar via jose com timeout
+      }
     }
 
-    const { payload } = await jwtVerify(idToken, FIREBASE_JWKS, {
-      algorithms: ["RS256"],
-      audience: FIREBASE_PROJECT_ID,
-      issuer: FIREBASE_ISSUER,
+    // Fallback: verificar via JWK com timeout
+    const verifyWithTimeout = new Promise<VerifiedFirebaseToken>((resolve, reject) => {
+      const timeout = setTimeout(() => reject(new Error("JWT verification timeout")), VERIFY_TIMEOUT_MS);
+      jwtVerify(idToken, FIREBASE_JWKS, {
+        algorithms: ["RS256"],
+        audience: FIREBASE_PROJECT_ID,
+        issuer: FIREBASE_ISSUER,
+      }).then(({ payload }) => {
+        clearTimeout(timeout);
+        const nowInSeconds = Math.floor(Date.now() / 1000);
+        if (typeof payload.sub !== "string" || payload.sub.length === 0 || payload.sub.length > 128) {
+          reject(new Error("Token Firebase sem um identificador de usuário válido"));
+          return;
+        }
+        if (typeof payload.iat !== "number" || payload.iat > nowInSeconds) {
+          reject(new Error("Token Firebase com data de emissão inválida"));
+          return;
+        }
+        resolve({
+          uid: payload.sub,
+          name: typeof payload.name === "string" ? payload.name : undefined,
+          email: typeof payload.email === "string" ? payload.email : undefined,
+          picture: typeof payload.picture === "string" ? payload.picture : undefined,
+        });
+      }).catch((err) => {
+        clearTimeout(timeout);
+        reject(err);
+      });
     });
 
-    const nowInSeconds = Math.floor(Date.now() / 1000);
-    if (typeof payload.sub !== "string" || payload.sub.length === 0 || payload.sub.length > 128) {
-      throw new Error("Token Firebase sem um identificador de usuário válido");
-    }
-    if (typeof payload.iat !== "number" || payload.iat > nowInSeconds) {
-      throw new Error("Token Firebase com data de emissão inválida");
-    }
-
-    return {
-      uid: payload.sub,
-      name: typeof payload.name === "string" ? payload.name : undefined,
-      email: typeof payload.email === "string" ? payload.email : undefined,
-      picture: typeof payload.picture === "string" ? payload.picture : undefined,
-    };
+    return verifyWithTimeout;
   }
 
   async authenticateRequest(req: Request): Promise<AuthenticatedUser> {
@@ -112,7 +131,6 @@ class SDKServer {
 
     if (!idToken) {
       const cookies = this.parseCookies(req.headers.cookie);
-      // Tentar múltiplos nomes para garantir compatibilidade total
       idToken = cookies.get("app_session_id") || cookies.get("firebase-token") || cookies.get("token");
       if (idToken) {
         console.log("[Auth] Token encontrado no cookie");
@@ -131,7 +149,6 @@ class SDKServer {
 
       let dbUser: any = null;
       try {
-        // Tentar sincronizar com o banco de dados
         await db.upsertUser({
           openId: uid,
           name: name || email || "Usuário Google",
@@ -148,11 +165,9 @@ class SDKServer {
       // Se temos o usuário no banco, retornamos ele
       if (dbUser) return dbUser;
 
-      // ROTA DE EMERGÊNCIA: Se o banco de dados falhar ou o usuário não existir,
-      // retornamos um objeto de usuário baseado no Token do Firebase para destravar o fluxo.
-      // Usamos um ID numérico que não conflite com seriais positivos do Postgres.
+      // ROTA DE EMERGÊNCIA: usuário temporário baseado no token
       return {
-        id: 999999, // ID alto para evitar conflitos
+        id: 999999,
         openId: uid,
         name: name || email || "Usuário Google",
         email: email || null,
