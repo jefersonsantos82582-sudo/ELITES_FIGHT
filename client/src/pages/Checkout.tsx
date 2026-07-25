@@ -154,12 +154,15 @@ export default function Checkout() {
   }
 
   // Se não tem user nem fbUser, o DashboardLayout vai mostrar a tela de login
-  if (!user && !fbUser) {
+  if (!user && !fbUser && !authLoading) {
     return (
       <DashboardLayout>
         <div className="py-8 md:py-12">
           <div className="container max-w-2xl text-center">
             <p className="text-muted-foreground">Faça login para continuar com o pagamento.</p>
+            <Button onClick={() => login(window.location.pathname + window.location.search)} className="mt-4">
+              Entrar com Google
+            </Button>
           </div>
         </div>
       </DashboardLayout>
