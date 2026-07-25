@@ -50,12 +50,12 @@ export default function Dashboard() {
   // vamos mostrar um Dashboard "parcial" em vez de uma tela de erro bloqueante.
   const showFallback = (isError || !overview) && fbUser;
 
-  if (authLoading || (isLoading && !fbUser) || (fbUser && !user)) {
+  if (authLoading || (isLoading && !fbUser)) {
     return (
       <DashboardLayout>
         <div className="flex flex-col h-96 items-center justify-center space-y-4">
           <Loader2 className="h-8 w-8 animate-spin text-primary" />
-          <p className="text-sm text-muted-foreground">Sincronizando sua conta...</p>
+          <p className="text-sm text-muted-foreground">Carregando...</p>
         </div>
       </DashboardLayout>
     );

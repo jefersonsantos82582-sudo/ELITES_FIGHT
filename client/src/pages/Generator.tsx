@@ -125,13 +125,13 @@ export default function Generator() {
     setGenerated(null);
   };
 
-  // Mostrar carregamento enquanto sincroniza
-  if (authLoading || isSyncing || (fbUser && !user)) {
+  // Mostrar carregamento inicial
+  if (authLoading) {
     return (
       <DashboardLayout>
         <div className="flex flex-col items-center justify-center min-h-[60vh] space-y-4">
           <Loader2 className="h-10 w-10 animate-spin text-primary" />
-          <p className="text-sm text-muted-foreground">Sincronizando sua conta...</p>
+          <p className="text-sm text-muted-foreground">Carregando...</p>
         </div>
       </DashboardLayout>
     );

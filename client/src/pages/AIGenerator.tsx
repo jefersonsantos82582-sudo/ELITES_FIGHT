@@ -89,13 +89,13 @@ export default function AIGenerator() {
     { name: "Cinza Elegante", header: "#4B5563", accent: "#1F2937" },
   ];
 
-  // Mostrar carregamento enquanto sincroniza
-  if (authLoading || isSyncing || (fbUser && !user)) {
+  // Mostrar carregamento inicial
+  if (authLoading) {
     return (
       <DashboardLayout>
         <div className="flex flex-col h-96 items-center justify-center space-y-4">
           <Loader2 className="h-8 w-8 animate-spin text-primary" />
-          <p className="text-sm text-muted-foreground">Sincronizando sua conta...</p>
+          <p className="text-sm text-muted-foreground">Carregando...</p>
         </div>
       </DashboardLayout>
     );
