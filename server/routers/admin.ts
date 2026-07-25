@@ -1,6 +1,6 @@
 /**
  * Rotas TRPC para Administração
- * Gerencia: Usuários, Pagamentos, Planos, Modelos
+ * Gerencia: Usuários, Pagamentos, Planos, Modelos, Sorteio
  */
 
 import { adminProcedure, router } from "../_core/trpc";
@@ -21,7 +21,6 @@ export const adminRouter = router({
       elite: users.filter(u => u.plan === "elite").length,
     };
 
-    // Calcular receita mensal (simulado)
     const monthlyRevenue = planCounts.pro * 14.99 + planCounts.elite * 24.99;
 
     return {
@@ -39,6 +38,15 @@ export const adminRouter = router({
   listAllUsers: adminProcedure.query(async () => {
     return db.getAllUsers();
   }),
+
+  /**
+   * Obter detalhes de um usuário específico
+   */
+  getUserById: adminProcedure
+    .input(z.object({ userId: z.number() }))
+    .query(async ({ input }) => {
+      return db.getUserById(input.userId);
+    }),
 
   /**
    * Listar todos os modelos
@@ -96,6 +104,7 @@ export const adminRouter = router({
         headerColor: z.string().optional(),
         accentColor: z.string().optional(),
         isActive: z.boolean().optional(),
+        isFeatured: z.boolean().optional(),
       })
     )
     .mutation(async ({ input }) => {
@@ -145,7 +154,7 @@ export const adminRouter = router({
     }),
 
   /**
-   * Atualizar plano
+   * Atualizar plano de preços
    */
   updatePlan: adminProcedure
     .input(
@@ -167,17 +176,23 @@ export const adminRouter = router({
     }),
 
   /**
-   * Atualizar plano de usuário
+   * Atualizar plano de usuário (upgrade/downgrade manual)
    */
   updateUserPlan: adminProcedure
     .input(
       z.object({
         userId: z.number(),
         plan: z.enum(["free", "pro", "elite"]),
+        days: z.number().optional().default(30),
       })
     )
     .mutation(async ({ input }) => {
-      return db.updateUserPlan(input.userId, input.plan);
+      let expiresAt: Date | undefined;
+      if (input.plan !== "free" && input.days > 0) {
+        expiresAt = new Date();
+        expiresAt.setDate(expiresAt.getDate() + input.days);
+      }
+      return db.updateUserPlan(input.userId, input.plan, expiresAt);
     }),
 
   /**

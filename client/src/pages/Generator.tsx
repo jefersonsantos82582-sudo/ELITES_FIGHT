@@ -1,8 +1,8 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { useLocation } from "wouter";
 import {
   FileSpreadsheet, Crown, Download, Loader2, Check, Palette,
-  Sparkles, FileText, AlertCircle,
+  Sparkles, FileText, AlertCircle, RefreshCw,
 } from "lucide-react";
 import DashboardLayout from "@/components/DashboardLayout";
 import { Card } from "@/components/ui/card";
@@ -47,10 +47,17 @@ export default function Generator() {
       toast.success("Planilha gerada com sucesso!");
     },
     onError: (err) => {
-      // Tratamento de erros de autenticação e sessão
       const msg = err.message || "";
-      if (msg.includes("login") || msg.includes("10001") || msg.includes("auth") || msg.includes("session") || msg.includes("unauthorized") || msg.includes("token") || msg.includes("FORBIDDEN")) {
-        toast.error("Sua sessão expirou. Por favor, faça login novamente.");
+      if (msg.includes("login") || msg.includes("10001") || msg.includes("auth") ||
+          msg.includes("session") || msg.includes("unauthorized") ||
+          msg.includes("token") || msg.includes("FORBIDDEN")) {
+        toast.error("Sua sessão expirou. Tente novamente.");
+        // Tentar forçar refetch do auth
+        trpc.auth.me.invalidate();
+      } else if (msg.includes("limite")) {
+        toast.error(msg);
+      } else if (msg.includes("plano")) {
+        toast.error(msg + " Faça upgrade para gerar mais.");
       } else {
         toast.error(msg || "Erro ao gerar planilha");
       }
@@ -104,7 +111,7 @@ export default function Generator() {
     });
   };
 
-  // Configurações de cores e temas (rota pública)
+  // Configurações de cores e temas
   const { data: settings } = trpc.settings.getAll.useQuery();
   const colorPresets = (settings?.find(s => s.key === "themes")?.value as any[]) || [
     { name: "Ouro Premium", header: "#D4AF37", accent: "#1A1A1A", plan: "free" },
@@ -116,8 +123,6 @@ export default function Generator() {
     { name: "Laranja Vibrante", header: "#EA580C", accent: "#7C2D12", plan: "pro" },
     { name: "Teal Moderno", header: "#0F766E", accent: "#134E4A", plan: "pro" },
   ];
-
-  const themeLimit = userPlan === "elite" ? 999 : userPlan === "pro" ? 15 : 8;
 
   const handleCategoryChange = (categoryId: string) => {
     setSelectedCategory(categoryId);
@@ -148,8 +153,8 @@ export default function Generator() {
             <p className="text-sm text-muted-foreground mb-6">
               Você precisa estar logado para gerar planilhas.
             </p>
-            <Button onClick={() => login("/generator")} className="w-full">Entrar com Google</Button>
-          </div>
+            <Button onClick={() => login("/dashboard/gerador")} className="w-full">Entrar com Google</Button>
+          </Card>
         </div>
       </DashboardLayout>
     );
@@ -201,9 +206,9 @@ export default function Generator() {
                 </p>
               ) : (
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    {categoryTemplates.map(tpl => {
-                      const tplPlan = tpl.plan as "free" | "pro" | "elite";
-                      const canAccess = planOrder[userPlan] >= planOrder[tplPlan] && allowedTemplateIds.has(tpl.id);
+                  {categoryTemplates.map(tpl => {
+                    const tplPlan = tpl.plan as "free" | "pro" | "elite";
+                    const canAccess = planOrder[userPlan] >= planOrder[tplPlan] && allowedTemplateIds.has(tpl.id);
                     const isSelected = String(tpl.id) === selectedTemplateId;
                     return (
                       <button
@@ -350,7 +355,6 @@ export default function Generator() {
 
               {selectedTemplate ? (
                 <div className="space-y-4">
-                  {/* Summary */}
                   <div className="space-y-2 text-sm">
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">Modelo:</span>
@@ -366,7 +370,6 @@ export default function Generator() {
                     </div>
                   </div>
 
-                  {/* Color preview */}
                   <div className="space-y-2">
                     <div className="text-xs text-muted-foreground">Cores:</div>
                     <div className="flex gap-2">
@@ -383,7 +386,6 @@ export default function Generator() {
                     </div>
                   </div>
 
-                  {/* Generate button */}
                   {generated ? (
                     <div className="space-y-3">
                       <div className="bg-primary/10 border border-primary/30 rounded-lg p-4 text-center">

@@ -112,12 +112,19 @@ export async function updateUserPlan(userId: number, plan: "free" | "pro" | "eli
   const planInfo = await getPlanByCode(plan);
   const aiUsesLeft = planInfo?.maxAiUses ?? 0;
 
-  await db.update(users).set({ 
-    plan, 
+  const updateData: any = {
+    plan,
     aiUsesLeft,
-    updatedAt: new Date(), 
-    planExpiresAt 
-  }).where(eq(users.id, userId));
+    updatedAt: new Date(),
+  };
+  // Só definir planExpiresAt se foi fornecido (pode ser null para downgrade)
+  if (planExpiresAt !== undefined) {
+    updateData.planExpiresAt = planExpiresAt;
+  } else if (plan === "free") {
+    updateData.planExpiresAt = null;
+  }
+
+  await db.update(users).set(updateData).where(eq(users.id, userId));
 }
 
 export async function downgradeExpiredPlans() {

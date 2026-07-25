@@ -1,5 +1,5 @@
 /**
- * Rotas TRPC para gerenciamento de pagamentos com Mercado Pago
+ * Rotas TRPC para gerenciamento de pagamentos com Mercado Pago - CORRIGIDO
  */
 
 import { publicProcedure, protectedProcedure, router } from "../_core/trpc";
@@ -31,6 +31,12 @@ export const paymentRouter = router({
       }
 
       const user = ctx.user;
+
+      // Verificar se o usuário é válido (não fallback)
+      if (!user.id || user.id === 999999) {
+        throw new Error("Sessão de usuário inválida. Faça login novamente.");
+      }
+
       const plan = await db.getPlanByCode(input.planCode);
 
       if (!plan) {
@@ -39,11 +45,13 @@ export const paymentRouter = router({
 
       const planPrice = parseFloat(plan.priceMonthly || "0");
 
-      if (planPrice <= 0) {
-        throw new Error("Plano inválido ou sem preço");
+      if (isNaN(planPrice) || planPrice <= 0) {
+        throw new Error("Plano inválido ou sem preço definido");
       }
 
       try {
+        console.log(`[Payment] Criando preferência para usuário ${user.id}, plano ${input.planCode}, preço R$ ${planPrice}`);
+
         const preference = await mercadoPagoService.createPlanUpgradePreference(
           user.id,
           user.email || "usuario@example.com",
@@ -59,14 +67,14 @@ export const paymentRouter = router({
           initPoint: preference.init_point || preference.sandbox_init_point,
           sandboxInitPoint: preference.sandbox_init_point,
         };
-      } catch (error) {
-        console.error("Erro ao criar preferência de pagamento:", error);
-        throw new Error("Falha ao criar preferência de pagamento");
+      } catch (error: any) {
+        console.error("[Payment] Erro ao criar preferência:", error?.message || error);
+        throw new Error(error?.message || "Falha ao criar preferência de pagamento");
       }
     }),
 
   /**
-   * Webhook para receber notificações de pagamento
+   * Webhook para receber notificações de pagamento (via tRPC)
    */
   webhook: publicProcedure
     .input(z.any())
@@ -76,11 +84,10 @@ export const paymentRouter = router({
       }
 
       try {
-        // O Mercado Pago envia o body do webhook
         const processed = await mercadoPagoService.processWebhookNotification(input);
         return { success: processed };
       } catch (error) {
-        console.error("Erro ao processar webhook de pagamento:", error);
+        console.error("[Payment] Erro ao processar webhook:", error);
         return { success: false, message: "Erro ao processar webhook" };
       }
     }),

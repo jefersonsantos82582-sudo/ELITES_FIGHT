@@ -31,23 +31,29 @@ export const protectedProcedure = t.procedure.use(requireUser);
 export const adminProcedure = t.procedure.use(
   t.middleware(async opts => {
     const { ctx, next } = opts;
-    
+
     // Verificar chave de acesso via Header ou Cookie
     const adminKeyFromHeader = ctx.req.headers["x-admin-key"];
     const adminKeyFromCookie = ctx.req.cookies["admin_key"];
     const adminKey = adminKeyFromHeader || adminKeyFromCookie;
-    
-    // Validar chave de forma segura usando variável de ambiente
-    const VALID_ADMIN_KEY = process.env.ADMIN_KEY || "admin_key_not_configured";
-    const isValidKey = adminKey && adminKey === VALID_ADMIN_KEY && adminKey.length > 8;
-    
-    // Lista de e-mails autorizados (pode ser expandida via DB depois)
+
+    // Validar chave usando variável de ambiente
+    const VALID_ADMIN_KEY = process.env.ADMIN_KEY;
+    const isValidKey = VALID_ADMIN_KEY && adminKey && adminKey === VALID_ADMIN_KEY;
+
+    // Lista de e-mails autorizados
     const AUTHORIZED_ADMINS = ["jefersonsantos82582@gmail.com"];
 
-    const isEmailAuthorized = ctx.user && AUTHORIZED_ADMINS.includes(ctx.user.email);
-    const hasAccess = isEmailAuthorized || isValidKey;
+    // Verificar se o usuário tem role admin no banco
+    const isRoleAdmin = ctx.user && ctx.user.role === "admin";
+
+    // Verificar email autorizado
+    const isEmailAuthorized = ctx.user && AUTHORIZED_ADMINS.includes(ctx.user.email || "");
+
+    const hasAccess = isRoleAdmin || isEmailAuthorized || isValidKey;
 
     if (!hasAccess) {
+      console.error("[Admin] Acesso negado. Não autorizado.");
       throw new TRPCError({ code: "FORBIDDEN", message: NOT_ADMIN_ERR_MSG });
     }
 
@@ -55,7 +61,20 @@ export const adminProcedure = t.procedure.use(
       ctx: {
         ...ctx,
         // Se entrou via chave mas não tem usuário logado, injetamos um mock de admin
-        user: ctx.user || { id: 999999, role: "admin", name: "Admin (Chave)", email: "admin@system", openId: "admin-key-access" },
+        user: ctx.user || {
+          id: 999999,
+          role: "admin",
+          name: "Admin (Chave)",
+          email: "admin@system",
+          openId: "admin-key-access",
+          plan: "free",
+          suspended: false,
+          sheetsGenerated: 0,
+          aiUsesLeft: 0,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          lastSignedIn: new Date(),
+        },
       },
     });
   }),

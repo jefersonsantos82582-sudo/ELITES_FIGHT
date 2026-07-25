@@ -1,27 +1,26 @@
 /**
- * Página de Checkout com Mercado Pago
+ * Página de Checkout com Mercado Pago - CORRIGIDO
  */
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useLocation } from "wouter";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Loader2, ArrowLeft, Check, AlertCircle } from "lucide-react";
+import { Loader2, ArrowLeft, Check, AlertCircle, CreditCard } from "lucide-react";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import MercadoPagoCheckout from "@/components/MercadoPagoCheckout";
 import DashboardLayout from "@/components/DashboardLayout";
 
 export default function Checkout() {
-  const { user, fbUser, isSyncing, loading: authLoading, login } = useAuth();
+  const { user, fbUser, isSyncing, loading: authLoading } = useAuth();
   const [location, setLocation] = useLocation();
   const [isLoading, setIsLoading] = useState(false);
-  const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [preferenceId, setPreferenceId] = useState<string | null>(null);
-  const [debugInfo, setDebugInfo] = useState<string>("");
+  const [retryCount, setRetryCount] = useState(0);
 
   // Extrair planCode da URL
   const searchParams = new URLSearchParams(window.location.search);
@@ -35,10 +34,54 @@ export default function Checkout() {
   );
 
   // Mutation para criar preferência de pagamento
-  const { mutateAsync: createPreference } = trpc.payment.createUpgradePreference.useMutation();
+  const createPreferenceMutation = trpc.payment.createUpgradePreference.useMutation();
+
   const planFeatures = Array.isArray(planInfo?.features)
     ? planInfo.features.filter((feature): feature is string => typeof feature === "string")
     : [];
+
+  // Função para criar preferência com retry
+  const createPreference = useCallback(async () => {
+    if (!planCode || !user) return;
+
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      console.log(`[Checkout] Criando preferência para plano: ${planCode}, tentativa ${retryCount + 1}`);
+
+      const result = await createPreferenceMutation.mutateAsync({
+        planCode,
+        successUrl: `${window.location.origin}/checkout/success`,
+        failureUrl: `${window.location.origin}/checkout/failure`,
+      });
+
+      console.log("[Checkout] Preferência criada:", result.preferenceId);
+      setPreferenceId(result.preferenceId);
+      setIsLoading(false);
+    } catch (err: any) {
+      const errorMsg = err?.message || "Erro desconhecido";
+      console.error(`[Checkout] Erro na tentativa ${retryCount + 1}:`, errorMsg);
+
+      // Retry apenas para erros de autenticação/sessão (até 3 tentativas)
+      const isAuthError = errorMsg.includes("login") || errorMsg.includes("10001") ||
+        errorMsg.includes("auth") || errorMsg.includes("session") ||
+        errorMsg.includes("unauthorized") || errorMsg.includes("token") ||
+        errorMsg.includes("FORBIDDEN");
+
+      if (isAuthError && retryCount < 3) {
+        console.log(`[Checkout] Erro de auth, aguardando e retentando em 3s...`);
+        setTimeout(() => {
+          setRetryCount(prev => prev + 1);
+          // Invalidar cache do auth para forçar refetch
+          trpc.auth.me.invalidate();
+        }, 3000);
+      } else {
+        setError(errorMsg);
+        setIsLoading(false);
+      }
+    }
+  }, [planCode, user, retryCount, createPreferenceMutation]);
 
   useEffect(() => {
     // Se não há planCode válido, voltar para a home
@@ -47,82 +90,19 @@ export default function Checkout() {
       return;
     }
 
-    // Se não tem usuário autenticado, aguardar ou mostrar login
+    // Se não tem usuário autenticado, aguardar
     if (!user) {
       if (authLoading || isSyncing) {
-        setDebugInfo("Sincronizando autenticação...");
+        return;
       }
       return;
     }
 
     // Usuário autenticado, tentar criar preferência
-    let active = true;
-    const loadPreference = async (retryCount = 0) => {
-      if (retryCount === 0) {
-        setIsLoading(true);
-        setError(null);
-        setDebugInfo("Criando preferência de pagamento...");
-      }
-      
-      try {
-        console.log(`[Checkout] Tentativa ${retryCount + 1} de criar preferência para plano: ${planCode}`);
-        
-        // Aguardar um pequeno delay para garantir que a sessão está sincronizada
-        if (retryCount === 0) {
-          await new Promise(resolve => setTimeout(resolve, 300));
-        }
-        
-        const result = await createPreference({
-          planCode,
-          successUrl: `${window.location.origin}/checkout/success`,
-          failureUrl: `${window.location.origin}/checkout/failure`,
-        });
+    createPreference();
+  }, [planCode, user?.id, setLocation, authLoading, isSyncing]); // Removido createPreference das deps para evitar loop
 
-        if (active) {
-          console.log("[Checkout] Preferência criada com sucesso:", result.preferenceId);
-          setDebugInfo("Preferência criada ✓");
-          setPreferenceId(result.preferenceId);
-          setIsLoading(false);
-        }
-      } catch (err: any) {
-        const errorMsg = err?.message || "Erro desconhecido";
-        console.error(`[Checkout] Tentativa ${retryCount + 1} falhou:`, errorMsg);
-        setDebugInfo(`Erro na tentativa ${retryCount + 1}: ${errorMsg}`);
-        
-        // Tentar novamente até 3 vezes para qualquer erro de autenticação/sessão
-        if (active && retryCount < 3 && (errorMsg.includes("login") || errorMsg.includes("auth") || errorMsg.includes("session") || errorMsg.includes("unauthorized") || errorMsg.includes("token"))) {
-          console.log(`[Checkout] Erro de autenticação/sessão, tentando novamente em 2s...`);
-          setTimeout(() => loadPreference(retryCount + 1), 2000);
-        } else if (active) {
-          console.error("[Checkout] Erro final:", errorMsg);
-          setError(errorMsg);
-          setDebugInfo(`Erro final: ${errorMsg}`);
-          setIsLoading(false);
-        }
-      } finally {
-        // Garantir que o loading sempre seja removido em caso de erro não tratado
-        if (!active) {
-          setIsLoading(false);
-        }
-      }
-    };
-
-    void loadPreference();
-    return () => { active = false; };
-  }, [user?.id, planCode, setLocation, createPreference, authLoading, isSyncing]);
-
-  const handleLogin = async () => {
-    setIsLoggingIn(true);
-    try {
-      await login("/loading");
-    } catch (err) {
-      console.error("[Checkout] Erro no login:", err);
-    } finally {
-      setIsLoggingIn(false);
-    }
-  };
-
-  // Mostrar carregamento apenas se estiver realmente sem NENHUMA info de usuário
+  // Se não tem user nem fbUser, o DashboardLayout vai mostrar a tela de login
   if (authLoading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background">
@@ -138,31 +118,27 @@ export default function Checkout() {
     return null;
   }
 
-  // Se não tem user do servidor mas temos fbUser, mostrar carregamento leve
-  if (!user && fbUser && isSyncing) {
+  if (!user && fbUser) {
     return (
       <DashboardLayout>
         <div className="flex min-h-screen items-center justify-center bg-background">
           <div className="text-center">
             <Loader2 className="h-10 w-10 animate-spin text-primary mx-auto mb-4" />
-            <p className="text-sm text-muted-foreground">Sincronizando sua sessão...</p>
-            {debugInfo && <p className="text-xs text-muted-foreground mt-2">{debugInfo}</p>}
+            <p className="text-sm text-muted-foreground">
+              {isSyncing ? "Sincronizando sua sessão..." : "Carregando perfil..."}
+            </p>
           </div>
         </div>
       </DashboardLayout>
     );
   }
 
-  // Se não tem user nem fbUser, o DashboardLayout vai mostrar a tela de login
-  if (!user && !fbUser && !authLoading) {
+  if (!user && !fbUser) {
     return (
       <DashboardLayout>
         <div className="py-8 md:py-12">
           <div className="container max-w-2xl text-center">
-            <p className="text-muted-foreground">Faça login para continuar com o pagamento.</p>
-            <Button onClick={() => login(window.location.pathname + window.location.search)} className="mt-4">
-              Entrar com Google
-            </Button>
+            <p className="text-muted-foreground mb-4">Faça login para continuar com o pagamento.</p>
           </div>
         </div>
       </DashboardLayout>
@@ -184,18 +160,14 @@ export default function Checkout() {
 
           <Card className="p-8 bg-card border-border/30 shadow-xl">
             <div className="text-center mb-8">
+              <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-4">
+                <CreditCard className="w-8 h-8 text-primary" />
+              </div>
               <h1 className="text-3xl font-bold mb-2">Upgrade de Plano</h1>
               <p className="text-muted-foreground">
                 {planInfo?.name} - R$ {planInfo?.price}/mês
               </p>
             </div>
-
-            {/* Debug Info - Remover em produção */}
-            {process.env.NODE_ENV === "development" && debugInfo && (
-              <div className="text-xs text-muted-foreground bg-muted/50 p-2 rounded border border-border/30 mb-4">
-                Debug: {debugInfo}
-              </div>
-            )}
 
             {error && (
               <div className="bg-destructive/10 border border-destructive/30 rounded-lg p-4 mb-8 text-destructive">
@@ -208,31 +180,11 @@ export default function Checkout() {
                       variant="outline"
                       size="sm"
                       onClick={() => {
-                        console.log("[Checkout] Usuário clicou em tentar novamente");
                         setError(null);
                         setPreferenceId(null);
-                        setIsLoading(true);
-                        setDebugInfo("Tentando novamente...");
-                        // Forçar refetch do auth.me antes de tentar novamente
+                        setRetryCount(0);
                         trpc.auth.me.invalidate();
-                        setTimeout(() => {
-                          createPreference({
-                            planCode: planCode!,
-                            successUrl: `${window.location.origin}/checkout/success`,
-                            failureUrl: `${window.location.origin}/checkout/failure`,
-                          })
-                            .then(result => {
-                              console.log("[Checkout] Preferência criada após retry");
-                              setPreferenceId(result.preferenceId);
-                              setDebugInfo("Preferência criada ✓");
-                            })
-                            .catch(err => {
-                              console.error("[Checkout] Erro após retry:", err);
-                              setError(err instanceof Error ? err.message : "Erro ao criar preferência");
-                              setDebugInfo(`Erro: ${err?.message}`);
-                            })
-                            .finally(() => setIsLoading(false));
-                        }, 1000);
+                        setTimeout(() => createPreference(), 500);
                       }}
                     >
                       Tentar novamente
@@ -245,8 +197,8 @@ export default function Checkout() {
             {isLoading ? (
               <div className="flex flex-col items-center justify-center py-12 gap-4">
                 <Loader2 className="w-10 h-10 animate-spin text-primary" />
-                <p className="text-sm text-muted-foreground animate-pulse">
-                  Criando seu túnel de pagamento seguro...
+                <p className="text-sm text-muted-foreground">
+                  {retryCount > 0 ? `Retentando... (${retryCount}/3)` : "Criando seu túnel de pagamento seguro..."}
                 </p>
               </div>
             ) : preferenceId ? (
@@ -268,13 +220,12 @@ export default function Checkout() {
                   <MercadoPagoCheckout
                     preferenceId={preferenceId}
                     onSuccess={() => {
-                      console.log("[Checkout] Pagamento bem-sucedido, redirecionando...");
+                      console.log("[Checkout] Pagamento concluído, redirecionando...");
                       setLocation("/checkout/success");
                     }}
                     onError={(err) => {
                       console.error("[Checkout] Erro no checkout:", err);
                       setError(err.message);
-                      setDebugInfo(`Erro no checkout: ${err.message}`);
                     }}
                   />
                 </div>
@@ -282,8 +233,7 @@ export default function Checkout() {
             ) : !error ? (
               <div className="text-center py-12">
                 <Loader2 className="w-8 h-8 animate-spin text-primary mx-auto mb-4" />
-                <p className="text-muted-foreground">Carregando opções de pagamento...</p>
-                {debugInfo && <p className="text-xs text-muted-foreground mt-2">{debugInfo}</p>}
+                <p className="text-muted-foreground">Preparando opções de pagamento...</p>
               </div>
             ) : null}
           </Card>
