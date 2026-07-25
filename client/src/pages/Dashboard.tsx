@@ -2,6 +2,7 @@ import { Link, useLocation } from "wouter";
 import {
   LayoutDashboard, FileSpreadsheet, Library, Settings, Crown,
   Download, TrendingUp, Sparkles, Clock, FileDown, Plus, AlertCircle, RefreshCw,
+  Loader2,
 } from "lucide-react";
 import DashboardLayout from "@/components/DashboardLayout";
 import ProfileCard from "@/components/ProfileCard";
@@ -49,11 +50,12 @@ export default function Dashboard() {
   // vamos mostrar um Dashboard "parcial" em vez de uma tela de erro bloqueante.
   const showFallback = (isError || !overview) && fbUser;
 
-  if (authLoading || (isLoading && !fbUser)) {
+  if (authLoading || (isLoading && !fbUser) || (fbUser && !user)) {
     return (
       <DashboardLayout>
-        <div className="flex h-96 items-center justify-center">
-          <div className="animate-pulse text-muted-foreground">Carregando seu dashboard...</div>
+        <div className="flex flex-col h-96 items-center justify-center space-y-4">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+          <p className="text-sm text-muted-foreground">Sincronizando sua conta...</p>
         </div>
       </DashboardLayout>
     );
