@@ -65,9 +65,10 @@ const trpcClient = trpc.createClient({
           // 1. Tentar pegar o token diretamente do Firebase com força de refresh
           const user = auth.currentUser;
           if (user) {
-            // Pegar token atual (mais rápido)
             const token = await user.getIdToken();
             localStorage.setItem("firebase-token", token);
+            // Definir cookie também para garantir que o servidor veja a sessão
+            document.cookie = `app_session_id=${token}; path=/; max-age=2592000; SameSite=Lax`;
             return { Authorization: `Bearer ${token}` };
           }
           

@@ -71,7 +71,7 @@ export default function Admin() {
     );
   }
 
-  if (!isAuthorized) {
+  if (!isAuthorized && !fbUser) {
     return (
       <DashboardLayout>
         <div className="mx-auto flex min-h-[80vh] max-w-md items-center justify-center">

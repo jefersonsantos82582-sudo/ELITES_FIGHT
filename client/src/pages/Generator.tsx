@@ -138,7 +138,7 @@ export default function Generator() {
   }
 
   // Mostrar mensagem se não estiver autenticado
-  if (!user) {
+  if (!user && !fbUser) {
     return (
       <DashboardLayout>
         <div className="flex items-center justify-center min-h-[60vh]">
@@ -149,7 +149,7 @@ export default function Generator() {
               Você precisa estar logado para gerar planilhas.
             </p>
             <Button onClick={() => login("/generator")} className="w-full">Entrar com Google</Button>
-          </Card>
+          </div>
         </div>
       </DashboardLayout>
     );
