@@ -18,23 +18,20 @@ import { toast } from "sonner";
 
 export default function Generator() {
   const { user, loading: authLoading, fbUser, isSyncing, login } = useAuth();
+  // Usamos staleTime infinito aqui porque o prefetching já garantiu os dados
+  // Isso remove qualquer delay de "loading" ao entrar na página
   const { data: overview } = trpc.dashboard.overview.useQuery(undefined, {
     enabled: Boolean(user),
-    retry: 1,
-    refetchOnWindowFocus: false,
-    staleTime: 30000,
+    staleTime: 5 * 60 * 1000,
   });
   const { data: categories } = trpc.categories.list.useQuery(undefined, {
-    retry: 1,
-    staleTime: 60000,
+    staleTime: 5 * 60 * 1000,
   });
   const { data: templates } = trpc.templates.list.useQuery(undefined, {
-    retry: 1,
-    staleTime: 60000,
+    staleTime: 5 * 60 * 1000,
   });
   const { data: settings } = trpc.settings.getAll.useQuery(undefined, {
-    retry: 1,
-    staleTime: 60000,
+    staleTime: 5 * 60 * 1000,
   });
 
   const [location] = useLocation();

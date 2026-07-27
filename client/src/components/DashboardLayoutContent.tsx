@@ -30,6 +30,7 @@ import {
 import { useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
 import { useAuth } from "@/_core/hooks/useAuth";
+import { trpc } from "@/lib/trpc";
 
 const menuItems = [
   { icon: LayoutDashboard, label: "Dashboard", path: "/dashboard" },
@@ -56,6 +57,23 @@ export function DashboardLayoutContent({
   const sidebarRef = useRef<HTMLDivElement>(null);
   const activeMenuItem = menuItems.find(item => item.path === location);
   const isMobile = useIsMobile();
+  
+  // PREFETCHING ESTRATÉGICO: Carrega dados em background assim que o dashboard abre
+  const utils = trpc.useUtils();
+  useEffect(() => {
+    if (user) {
+      // Carrega categorias, templates e configurações em background
+      utils.categories.list.prefetch();
+      utils.templates.list.prefetch();
+      utils.settings.getAll.prefetch();
+      utils.dashboard.overview.prefetch();
+      
+      // Pré-carrega preferência de pagamento para o plano Pro (mais comum)
+      // Isso deixa o botão de assinar instantâneo
+      utils.payment.getPlanInfo.prefetch({ planCode: "pro" });
+      utils.payment.getPlanInfo.prefetch({ planCode: "elite" });
+    }
+  }, [user, utils]);
 
   useEffect(() => {
     if (isCollapsed) {

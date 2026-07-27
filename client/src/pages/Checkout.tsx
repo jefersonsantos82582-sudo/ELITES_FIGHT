@@ -31,7 +31,11 @@ export default function Checkout() {
 
   const { data: planInfo } = trpc.payment.getPlanInfo.useQuery(
     { planCode: planCode || "pro" },
-    { enabled: Boolean(planCode), retry: 1, staleTime: 300000 }
+    { 
+      enabled: Boolean(planCode), 
+      staleTime: 10 * 60 * 1000, // 10 minutos de cache para planos
+      refetchOnMount: false 
+    }
   );
 
   const createPreferenceMutation = trpc.payment.createUpgradePreference.useMutation();

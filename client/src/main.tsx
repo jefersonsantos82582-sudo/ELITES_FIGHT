@@ -15,8 +15,8 @@ const queryClient = new QueryClient({
         if (error?.message === UNAUTHED_ERR_MSG) return false;
         return failureCount < 3;
       },
-      gcTime: 5 * 60 * 1000, // garbage collect após 5 min
-      staleTime: 30000, // cache válido 30s
+      gcTime: 30 * 60 * 1000, // Manter em cache por 30 min
+      staleTime: 5 * 60 * 1000, // Considerar dados "frescos" por 5 min (evita loading ao trocar abas)
     },
     mutations: {
       retry: false, // mutações não repetem automaticamente
