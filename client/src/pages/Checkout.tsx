@@ -126,6 +126,23 @@ export default function Checkout() {
     }
   }, [planCode, user?.id, setLocation, authLoading, isSyncing, preferenceId, isLoading, error, createPreference]);
 
+  // Polling para verificar se o pagamento foi aprovado enquanto o usuário está na página
+  const { data: paymentStatus } = trpc.payment.checkStatus.useQuery(
+    { preferenceId: preferenceId || "" },
+    { 
+      enabled: !!preferenceId && !error,
+      refetchInterval: (data) => (data?.status === "approved" ? false : 3000), // Verifica a cada 3s
+    }
+  );
+
+  useEffect(() => {
+    if (paymentStatus?.status === "approved") {
+      toast.success("Pagamento confirmado! Seu plano foi atualizado.");
+      trpc.auth.me.invalidate(); // Atualiza os dados do usuário globalmente
+      setTimeout(() => setLocation("/checkout/success"), 1500);
+    }
+  }, [paymentStatus, setLocation]);
+
   // Cleanup timeout ao desmontar
   useEffect(() => {
     return () => {
