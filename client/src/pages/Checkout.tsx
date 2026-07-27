@@ -108,17 +108,19 @@ export default function Checkout() {
       return;
     }
 
-    if (!user) {
-      // Se não tem user e não está carregando, não tentar
-      if (!authLoading && !isSyncing) {
-        return;
-      }
+    // Só iniciamos a criação da preferência quando:
+    // 1. Não estamos mais em fase de carregamento inicial (authLoading)
+    // 2. Não estamos sincronizando com o banco de dados (isSyncing)
+    // 3. Temos o objeto 'user' do banco de dados pronto
+    if (authLoading || isSyncing || !user) {
       return;
     }
 
-    // Usuário autenticado, criar preferência (apenas na primeira vez)
-    createPreference();
-  }, [planCode, user?.id, setLocation, authLoading, isSyncing]);
+    // Usuário autenticado e sincronizado, criar preferência (apenas na primeira vez)
+    if (!preferenceId && !isLoading && !error) {
+      createPreference();
+    }
+  }, [planCode, user?.id, setLocation, authLoading, isSyncing, preferenceId, isLoading, error, createPreference]);
 
   // Cleanup timeout ao desmontar
   useEffect(() => {
