@@ -346,43 +346,47 @@ function PlanDialog({ open, onOpenChange, plan }: any) {
   );
 }
 
-// ==================== Users Tab ====================
+  // ==================== Users Tab ====================
 function UsersTab({ searchQuery }: { searchQuery: string }) {
-  const { data: users } = (trpc.admin as any).listUsers.useQuery();
+  // Nota: trpc.admin.listAllUsers é o procedimento correto definido no adminRouter
+  const { data: users, isLoading } = trpc.admin.listAllUsers.useQuery();
 
   const filtered = (users as any[])?.filter(u =>
     !searchQuery || u.email?.toLowerCase().includes(searchQuery.toLowerCase()) ||
     u.name?.toLowerCase().includes(searchQuery.toLowerCase())
   ) || [];
 
+  if (isLoading) return <div className="text-muted-foreground text-center py-8">Carregando usuários...</div>;
+
   return (
     <div className="space-y-4">
       <h3 className="font-semibold">Usuários ({filtered.length})</h3>
-      <div className="space-y-2 max-h-[600px] overflow-y-auto">
-        {filtered.map((user: any) => (
-          <Card key={user.id} className="p-4 bg-card/50 border-border/30">
-            <div className="flex items-center justify-between">
-              <div className="flex-1">
-                <div className="flex items-center gap-2 mb-1">
-                  <span className="font-medium text-sm">{user.name || user.email}</span>
-                  <Badge className={`text-xs ${user.role === 'admin' ? 'bg-primary/20 text-primary' : 'bg-muted'}`}>
-                    {user.role}
-                  </Badge>
-                  <Badge className={`text-xs ${
-                    user.plan === 'elite' ? 'bg-gold-gradient text-black' :
-                    user.plan === 'pro' ? 'bg-primary/20 text-primary' :
-                    'bg-muted'
-                  }`}>
-                    {user.plan}
-                  </Badge>
+      <div className="space-y-2 max-h-[600px] overflow-y-auto scrollbar-thin scrollbar-thumb-primary/20">
+        {filtered.length === 0 ? (
+          <Card className="p-8 text-center text-muted-foreground">Nenhum usuário encontrado</Card>
+        ) : (
+          filtered.map((user: any) => (
+            <Card key={user.id} className="p-3 bg-card/50 border-border/30 hover:border-primary/30 transition-colors">
+              <div className="flex items-center justify-between">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 mb-0.5">
+                    <span className="font-medium text-sm truncate">{user.name || "Sem Nome"}</span>
+                    <Badge variant="outline" className={`text-[10px] h-4 px-1 ${
+                      user.plan === 'elite' ? 'border-yellow-500/50 text-yellow-500' :
+                      user.plan === 'pro' ? 'border-primary/50 text-primary' :
+                      'text-muted-foreground'
+                    }`}>
+                      {user.plan?.toUpperCase()}
+                    </Badge>
+                  </div>
+                  <p className="text-xs text-muted-foreground truncate">
+                    {user.email}
+                  </p>
                 </div>
-                <p className="text-xs text-muted-foreground">
-                  {user.email} • Planilhas: {user.sheetsGenerated}
-                </p>
               </div>
-            </div>
-          </Card>
-        ))}
+            </Card>
+          ))
+        )}
       </div>
     </div>
   );

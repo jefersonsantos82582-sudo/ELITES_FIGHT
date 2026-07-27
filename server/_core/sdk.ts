@@ -165,22 +165,9 @@ class SDKServer {
       // Se temos o usuário no banco, retornamos ele
       if (dbUser) return dbUser;
 
-      // ROTA DE EMERGÊNCIA: usuário temporário baseado no token
-      return {
-        id: 999999,
-        openId: uid,
-        name: name || email || "Usuário Google",
-        email: email || null,
-        photoUrl: picture || null,
-        role: (uid === ENV.ownerOpenId || email === "jefersonsantos82582@gmail.com") ? "admin" : "user",
-        plan: "free",
-        sheetsGenerated: 0,
-        lastSignedIn: signedInAt,
-        createdAt: signedInAt,
-        updatedAt: signedInAt,
-        suspended: false,
-        loginMethod: "google",
-      } as any;
+      // Se não conseguimos criar/recuperar o usuário do banco, falhamos em vez de usar temporário
+      console.error("[Auth] Falha crítica: Usuário autenticado mas não encontrado/criado no banco de dados.");
+      throw ForbiddenError("Falha na sincronização do perfil. Por favor, tente novamente.");
     } catch (error) {
       console.error("[Auth] Falha ao validar o token Firebase:", error);
       throw ForbiddenError("Invalid authentication token");

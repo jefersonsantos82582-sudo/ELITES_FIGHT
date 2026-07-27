@@ -101,7 +101,18 @@ export async function getUserById(id: number) {
 export async function getAllUsers() {
   const db = await getDb();
   if (!db) return [];
-  return db.select().from(users).orderBy(desc(users.createdAt));
+  // Otimização: Seleciona apenas campos essenciais para a listagem (nome e email)
+  // Isso reduz o tráfego de dados e melhora a performance em grandes volumes
+  return db
+    .select({
+      id: users.id,
+      name: users.name,
+      email: users.email,
+      plan: users.plan,
+      createdAt: users.createdAt,
+    })
+    .from(users)
+    .orderBy(desc(users.createdAt));
 }
 
 export async function updateUserPlan(userId: number, plan: "free" | "pro" | "elite", planExpiresAt?: Date) {
