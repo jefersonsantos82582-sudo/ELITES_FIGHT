@@ -19,18 +19,45 @@ export const appRouter = router({
     me: publicProcedure.query(opts => opts.ctx.user),
     _debugAuth: publicProcedure.query(async ({ ctx }) => {
       const { sdk } = await import("./_core/sdk");
+      const jose = await import("jose");
+      const out: any = {
+        hasServiceAccount: Boolean(process.env.FIREBASE_SERVICE_ACCOUNT),
+        firebaseProjectIdEnv: process.env.FIREBASE_PROJECT_ID ?? null,
+        hasDatabaseUrl: Boolean(process.env.DATABASE_URL),
+      };
+
+      const authHeader = ctx.req.headers.authorization;
+      const idToken = typeof authHeader === "string" && authHeader.startsWith("Bearer ")
+        ? authHeader.slice(7)
+        : undefined;
+      out.hasToken = Boolean(idToken);
+
+      if (idToken) {
+        // Teste 1: JWK direto, sem timeout race, sem cache do módulo
+        try {
+          const jwks = jose.createRemoteJWKSet(
+            new URL("https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com"),
+          );
+          const { payload } = await jose.jwtVerify(idToken, jwks, {
+            algorithms: ["RS256"],
+            audience: "elites-fight",
+            issuer: "https://securetoken.google.com/elites-fight",
+          });
+          out.jwkFreshTest = { ok: true, sub: payload.sub };
+        } catch (e: any) {
+          out.jwkFreshTest = { ok: false, name: e?.name, message: e?.message };
+        }
+      }
+
       try {
         const user = await sdk.authenticateRequest(ctx.req);
-        return { ok: true, user };
+        out.ok = true;
+        out.user = user;
       } catch (error: any) {
-        return {
-          ok: false,
-          name: error?.name,
-          message: error?.message,
-          code: error?.code,
-          stack: typeof error?.stack === "string" ? error.stack.split("\n").slice(0, 6) : undefined,
-        };
+        out.ok = false;
+        out.error = { name: error?.name, message: error?.message };
       }
+      return out;
     }),
     logout: publicProcedure.mutation(({ ctx }) => {
       const cookieOptions = getSessionCookieOptions(ctx.req);
