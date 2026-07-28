@@ -78,12 +78,21 @@ class SDKServer {
   }
 
   private async verifyFirebaseToken(idToken: string): Promise<VerifiedFirebaseToken> {
-    const firebaseAuth = getFirebaseAuth();
+    let firebaseAuth: ReturnType<typeof getFirebaseAuth> | null = null;
+    try {
+      firebaseAuth = getFirebaseAuth();
+    } catch (error) {
+      // Falha ao inicializar o Firebase Admin SDK (ex.: credencial mal configurada).
+      // Não deve derrubar a autenticação: seguimos para o fallback via JWK abaixo.
+      console.error("[Auth] Falha ao inicializar Firebase Admin SDK, usando fallback JWK:", error);
+    }
+
     if (firebaseAuth) {
       try {
         return await firebaseAuth.verifyIdToken(idToken);
       } catch (error) {
         // Se Firebase Admin SDK falhar, tentar via jose com timeout
+        console.error("[Auth] Firebase Admin SDK falhou ao verificar token, usando fallback JWK:", error);
       }
     }
 

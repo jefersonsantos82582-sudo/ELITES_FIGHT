@@ -55,7 +55,7 @@ export const appRouter = router({
           const { getAuth } = await import("firebase-admin/auth");
           if (!getApps().length) {
             const sa = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT as string);
-            initializeApp({ credential: cert({ projectId: sa.project_id, clientEmail: sa.client_email, privateKey: sa.private_key }) });
+            initializeApp({ credential: cert({ projectId: sa.project_id, clientEmail: sa.client_email, privateKey: String(sa.private_key).replace(/\\n/g, "\n") }) });
           }
           const decoded = await getAuth().verifyIdToken(idToken);
           out.adminSdkTest = { ok: true, uid: decoded.uid };
