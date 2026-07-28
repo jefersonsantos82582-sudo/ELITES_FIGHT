@@ -17,6 +17,21 @@ export const appRouter = router({
 
   auth: router({
     me: publicProcedure.query(opts => opts.ctx.user),
+    _debugAuth: publicProcedure.query(async ({ ctx }) => {
+      const { sdk } = await import("./_core/sdk");
+      try {
+        const user = await sdk.authenticateRequest(ctx.req);
+        return { ok: true, user };
+      } catch (error: any) {
+        return {
+          ok: false,
+          name: error?.name,
+          message: error?.message,
+          code: error?.code,
+          stack: typeof error?.stack === "string" ? error.stack.split("\n").slice(0, 6) : undefined,
+        };
+      }
+    }),
     logout: publicProcedure.mutation(({ ctx }) => {
       const cookieOptions = getSessionCookieOptions(ctx.req);
       ctx.res.clearCookie(COOKIE_NAME, { ...cookieOptions, maxAge: -1 });
