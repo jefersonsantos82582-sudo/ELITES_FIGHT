@@ -101,17 +101,23 @@ export async function getUserById(id: number) {
 export async function getAllUsers() {
   const db = await getDb();
   if (!db) return [];
-  // Otimização: Seleciona apenas campos essenciais para a listagem (nome e email)
-  // Isso reduz o tráfego de dados e melhora a performance em grandes volumes
   return db
     .select({
       id: users.id,
+      openId: users.openId,
       name: users.name,
       email: users.email,
-      plan: users.plan,
+      photoUrl: users.photoUrl,
+      loginMethod: users.loginMethod,
       role: users.role,
+      plan: users.plan,
       suspended: users.suspended,
+      sheetsGenerated: users.sheetsGenerated,
+      aiUsesLeft: users.aiUsesLeft,
       createdAt: users.createdAt,
+      updatedAt: users.updatedAt,
+      lastSignedIn: users.lastSignedIn,
+      planExpiresAt: users.planExpiresAt,
     })
     .from(users)
     .orderBy(desc(users.createdAt));
