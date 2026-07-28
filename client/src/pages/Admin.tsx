@@ -30,10 +30,10 @@ interface UserInfo {
   suspended: boolean;
   sheetsGenerated: number;
   aiUsesLeft: number;
-  createdAt: string;
-  updatedAt: string;
-  lastSignedIn: string;
-  planExpiresAt: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+  lastSignedIn: Date;
+  planExpiresAt: Date | null;
 }
 
 export default function Admin() {
@@ -86,13 +86,15 @@ export default function Admin() {
   const statsQuery = trpc.admin.stats.useQuery(undefined, {
     enabled: isAuthorized,
     retry: false,
-    onError: (err) => {
-      if (err.message.includes("FORBIDDEN") || err.message.includes("UNAUTHORIZED")) {
-        setIsAuthorized(false);
-        setAuthError("Chave de acesso inválida ou expirada.");
-      }
-    }
   });
+
+  useEffect(() => {
+    const err = statsQuery.error;
+    if (err && (err.message.includes("FORBIDDEN") || err.message.includes("UNAUTHORIZED"))) {
+      setIsAuthorized(false);
+      setAuthError("Chave de acesso inválida ou expirada.");
+    }
+  }, [statsQuery.error]);
 
   const usersQuery = trpc.admin.listAllUsers.useQuery(undefined, {
     enabled: isAuthorized,
