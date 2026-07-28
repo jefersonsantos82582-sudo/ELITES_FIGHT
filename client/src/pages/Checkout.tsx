@@ -13,6 +13,7 @@ import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import MercadoPagoCheckout from "@/components/MercadoPagoCheckout";
 import DashboardLayout from "@/components/DashboardLayout";
+import { toast } from "sonner";
 
 export default function Checkout() {
   const { user, fbUser, isSyncing, loading: authLoading } = useAuth();
@@ -133,14 +134,14 @@ export default function Checkout() {
     { preferenceId: preferenceId || "" },
     { 
       enabled: !!preferenceId && !error,
-      refetchInterval: (data) => (data?.status === "approved" ? false : 3000), // Verifica a cada 3s
+      refetchInterval: (query) => (query.state.data?.status === "approved" ? false : 3000), // Verifica a cada 3s
     }
   );
 
   useEffect(() => {
     if (paymentStatus?.status === "approved") {
       toast.success("Pagamento confirmado! Seu plano foi atualizado.");
-      trpc.auth.me.invalidate(); // Atualiza os dados do usuário globalmente
+      utils.auth.me.invalidate(); // Atualiza os dados do usuário globalmente
       setTimeout(() => setLocation("/checkout/success"), 1500);
     }
   }, [paymentStatus, setLocation]);
