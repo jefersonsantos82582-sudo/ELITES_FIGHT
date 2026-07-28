@@ -17,6 +17,7 @@ import { toast } from "sonner";
 
 export default function AIGenerator() {
   const { user, loading: authLoading, fbUser, isSyncing, login } = useAuth();
+  const utils = trpc.useUtils();
   const { data: overview } = trpc.dashboard.overview.useQuery(undefined, {
     enabled: !authLoading && Boolean(user),
     retry: 1,
@@ -42,8 +43,8 @@ export default function AIGenerator() {
       if (msg.includes("login") || msg.includes("10001") || msg.includes("auth") ||
           msg.includes("session") || msg.includes("unauthorized") || msg.includes("token")) {
         toast.error("Sua sessão expirou. Tente novamente.");
-        trpc.auth.me.invalidate();
-        setTimeout(() => trpc.auth.me.refetch(), 2000);
+        utils.auth.me.invalidate();
+        setTimeout(() => utils.auth.me.refetch(), 2000);
       } else {
         toast.error(err.message || "Erro ao gerar planilha com IA");
       }

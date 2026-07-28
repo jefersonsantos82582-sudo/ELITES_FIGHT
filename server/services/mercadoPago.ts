@@ -29,6 +29,11 @@ interface CreatePreferencePayload {
   auto_return?: 'approved' | 'all';
   external_reference?: string;
   notification_url?: string;
+  payment_methods?: {
+    excluded_payment_methods?: Array<{ id: string }>;
+    excluded_payment_types?: Array<{ id: string }>;
+    installments?: number;
+  };
 }
 
 interface MercadoPagoPreference {

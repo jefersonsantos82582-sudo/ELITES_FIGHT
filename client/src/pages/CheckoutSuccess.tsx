@@ -29,9 +29,9 @@ export default function CheckoutSuccess() {
         console.log(`[CheckoutSuccess] Tentativa ${attempts + 1}/${MAX_ATTEMPTS}`);
 
         await utils.auth.me.invalidate();
-        const meResult = await utils.auth.me.refetch();
+        const meData = await utils.auth.me.fetch();
 
-        if (meResult.data?.plan && meResult.data.plan !== "free") {
+        if (meData?.plan && meData.plan !== "free") {
           // Plano atualizado!
           await utils.dashboard.overview.invalidate();
           await utils.plans.list.invalidate();

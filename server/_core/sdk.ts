@@ -142,36 +142,43 @@ class SDKServer {
       throw ForbiddenError("Missing authentication token");
     }
 
+    let decodedToken: VerifiedFirebaseToken;
     try {
-      const decodedToken = await this.verifyFirebaseToken(idToken);
-      const { uid, name, email, picture } = decodedToken;
-      const signedInAt = new Date();
-
-      let dbUser: any = null;
-      try {
-        await db.upsertUser({
-          openId: uid,
-          name: name || email || "Usuário Google",
-          email: email || null,
-          photoUrl: picture || null,
-          loginMethod: "google",
-          lastSignedIn: signedInAt,
-        });
-        dbUser = await db.getUserByOpenId(uid);
-      } catch (dbError) {
-        console.error("[Auth] Erro ao sincronizar com o banco de dados:", dbError);
-      }
-
-      // Se temos o usuário no banco, retornamos ele
-      if (dbUser) return dbUser;
-
-      // Se não conseguimos criar/recuperar o usuário do banco, falhamos em vez de usar temporário
-      console.error("[Auth] Falha crítica: Usuário autenticado mas não encontrado/criado no banco de dados.");
-      throw ForbiddenError("Falha na sincronização do perfil. Por favor, tente novamente.");
+      decodedToken = await this.verifyFirebaseToken(idToken);
     } catch (error) {
       console.error("[Auth] Falha ao validar o token Firebase:", error);
       throw ForbiddenError("Invalid authentication token");
     }
+
+    const { uid, name, email, picture } = decodedToken;
+    const signedInAt = new Date();
+
+    let dbUser: any = null;
+    let dbError: unknown = null;
+    try {
+      await db.upsertUser({
+        openId: uid,
+        name: name || email || "Usuário Google",
+        email: email || null,
+        photoUrl: picture || null,
+        loginMethod: "google",
+        lastSignedIn: signedInAt,
+      });
+      dbUser = await db.getUserByOpenId(uid);
+    } catch (error) {
+      dbError = error;
+      console.error("[Auth] Erro ao sincronizar com o banco de dados:", error);
+    }
+
+    // Se temos o usuário no banco, retornamos ele
+    if (dbUser) return dbUser;
+
+    // Se não conseguimos criar/recuperar o usuário do banco, falhamos em vez de usar temporário
+    console.error(
+      "[Auth] Falha crítica: Usuário autenticado mas não encontrado/criado no banco de dados.",
+      dbError,
+    );
+    throw ForbiddenError("Falha na sincronização do perfil. Por favor, tente novamente.");
   }
 }
 
