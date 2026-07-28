@@ -7,7 +7,23 @@ vi.mock("./db", () => ({
   getAllCategories: vi.fn().mockResolvedValue([]),
   getAllPlans: vi.fn().mockResolvedValue([]),
   getAllSettings: vi.fn().mockResolvedValue([]),
-  getAllTemplates: vi.fn().mockResolvedValue([]),
+  getAllTemplates: vi.fn().mockResolvedValue([
+    {
+      id: 1,
+      name: "Controle Financeiro",
+      slug: "controle-financeiro",
+      description: "Modelo de controle financeiro",
+      categoryId: 1,
+      plan: "free",
+      columns: [{ name: "Data", type: "date", width: 15 }, { name: "Descrição", type: "text", width: 30 }],
+      sampleRows: [],
+      headerColor: "#D4AF37",
+      accentColor: "#1A1A1A",
+      isActive: true,
+      isFeatured: false,
+      displayOrder: 0,
+    },
+  ]),
   getFeaturedTemplates: vi.fn().mockResolvedValue([]),
   getTemplateById: vi.fn().mockResolvedValue({
     id: 1,
@@ -36,6 +52,8 @@ vi.mock("./db", () => ({
   getGeneratedSheetsByUser: vi.fn().mockResolvedValue([]),
   createGeneratedSheet: vi.fn().mockResolvedValue({ id: 1 }),
   incrementSheetsGenerated: vi.fn().mockResolvedValue(undefined),
+  countGeneratedSheetsSince: vi.fn().mockResolvedValue(0),
+  updateUserAIUses: vi.fn().mockResolvedValue(undefined),
 }));
 
 // Mock storage
