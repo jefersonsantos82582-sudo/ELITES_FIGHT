@@ -49,6 +49,21 @@ export const appRouter = router({
         }
       }
 
+      if (idToken) {
+        try {
+          const { getApps, initializeApp, cert } = await import("firebase-admin/app");
+          const { getAuth } = await import("firebase-admin/auth");
+          if (!getApps().length) {
+            const sa = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT as string);
+            initializeApp({ credential: cert({ projectId: sa.project_id, clientEmail: sa.client_email, privateKey: sa.private_key }) });
+          }
+          const decoded = await getAuth().verifyIdToken(idToken);
+          out.adminSdkTest = { ok: true, uid: decoded.uid };
+        } catch (e: any) {
+          out.adminSdkTest = { ok: false, name: e?.name, message: e?.message, code: e?.code };
+        }
+      }
+
       try {
         const user = await sdk.authenticateRequest(ctx.req);
         out.ok = true;
