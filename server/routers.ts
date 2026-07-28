@@ -17,63 +17,6 @@ export const appRouter = router({
 
   auth: router({
     me: publicProcedure.query(opts => opts.ctx.user),
-    _debugAuth: publicProcedure.query(async ({ ctx }) => {
-      const { sdk } = await import("./_core/sdk");
-      const jose = await import("jose");
-      const out: any = {
-        hasServiceAccount: Boolean(process.env.FIREBASE_SERVICE_ACCOUNT),
-        firebaseProjectIdEnv: process.env.FIREBASE_PROJECT_ID ?? null,
-        hasDatabaseUrl: Boolean(process.env.DATABASE_URL),
-      };
-
-      const authHeader = ctx.req.headers.authorization;
-      const idToken = typeof authHeader === "string" && authHeader.startsWith("Bearer ")
-        ? authHeader.slice(7)
-        : undefined;
-      out.hasToken = Boolean(idToken);
-
-      if (idToken) {
-        // Teste 1: JWK direto, sem timeout race, sem cache do módulo
-        try {
-          const jwks = jose.createRemoteJWKSet(
-            new URL("https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com"),
-          );
-          const { payload } = await jose.jwtVerify(idToken, jwks, {
-            algorithms: ["RS256"],
-            audience: "elites-fight",
-            issuer: "https://securetoken.google.com/elites-fight",
-          });
-          out.jwkFreshTest = { ok: true, sub: payload.sub };
-        } catch (e: any) {
-          out.jwkFreshTest = { ok: false, name: e?.name, message: e?.message };
-        }
-      }
-
-      if (idToken) {
-        try {
-          const { getApps, initializeApp, cert } = await import("firebase-admin/app");
-          const { getAuth } = await import("firebase-admin/auth");
-          if (!getApps().length) {
-            const sa = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT as string);
-            initializeApp({ credential: cert({ projectId: sa.project_id, clientEmail: sa.client_email, privateKey: String(sa.private_key).replace(/\\n/g, "\n") }) });
-          }
-          const decoded = await getAuth().verifyIdToken(idToken);
-          out.adminSdkTest = { ok: true, uid: decoded.uid };
-        } catch (e: any) {
-          out.adminSdkTest = { ok: false, name: e?.name, message: e?.message, code: e?.code };
-        }
-      }
-
-      try {
-        const user = await sdk.authenticateRequest(ctx.req);
-        out.ok = true;
-        out.user = user;
-      } catch (error: any) {
-        out.ok = false;
-        out.error = { name: error?.name, message: error?.message };
-      }
-      return out;
-    }),
     logout: publicProcedure.mutation(({ ctx }) => {
       const cookieOptions = getSessionCookieOptions(ctx.req);
       ctx.res.clearCookie(COOKIE_NAME, { ...cookieOptions, maxAge: -1 });
