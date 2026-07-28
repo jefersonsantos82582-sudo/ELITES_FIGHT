@@ -16,6 +16,7 @@ import DashboardLayout from "@/components/DashboardLayout";
 
 export default function Checkout() {
   const { user, fbUser, isSyncing, loading: authLoading } = useAuth();
+  const utils = trpc.useUtils();
   const [location, setLocation] = useLocation();
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -90,10 +91,11 @@ export default function Checkout() {
 
       if (isAuthError && retryCount < 2) {
         console.log(`[Checkout] Erro de auth, retentando em 2s...`);
-        setTimeout(() => {
+        setTimeout(async () => {
           setRetryCount(prev => prev + 1);
-          trpc.auth.me.invalidate();
-          trpc.auth.me.refetch();
+          await utils.auth.me.invalidate();
+          await utils.auth.me.refetch();
+          createPreference();
         }, 2000);
       } else {
         setError(errorMsg);
@@ -191,7 +193,7 @@ export default function Checkout() {
                         setError(null);
                         setPreferenceId(null);
                         setRetryCount(0);
-                        trpc.auth.me.invalidate();
+                        utils.auth.me.invalidate();
                         setTimeout(() => createPreference(), 500);
                       }}
                     >

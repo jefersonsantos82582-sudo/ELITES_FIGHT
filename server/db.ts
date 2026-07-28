@@ -109,6 +109,8 @@ export async function getAllUsers() {
       name: users.name,
       email: users.email,
       plan: users.plan,
+      role: users.role,
+      suspended: users.suspended,
       createdAt: users.createdAt,
     })
     .from(users)

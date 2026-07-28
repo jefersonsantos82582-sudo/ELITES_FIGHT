@@ -18,6 +18,7 @@ import { toast } from "sonner";
 
 export default function Generator() {
   const { user, loading: authLoading, fbUser, isSyncing, login } = useAuth();
+  const utils = trpc.useUtils();
   const { data: overview } = trpc.dashboard.overview.useQuery(undefined, {
     enabled: Boolean(user),
     retry: 1,
@@ -64,11 +65,11 @@ export default function Generator() {
           msg.includes("session") || msg.includes("unauthorized") ||
           msg.includes("token") || msg.includes("FORBIDDEN")) {
         toast.error("Sua sessão expirou. Tente novamente.");
-        trpc.auth.me.invalidate();
+        utils.auth.me.invalidate();
         if (authRetryCount < 2) {
           setTimeout(() => {
             setAuthRetryCount(prev => prev + 1);
-            trpc.auth.me.refetch();
+            utils.auth.me.refetch();
           }, 2000);
         }
       } else if (msg.includes("limite")) {
