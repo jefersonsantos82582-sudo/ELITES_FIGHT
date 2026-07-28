@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray, lt, sql } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, lt, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 import {
@@ -307,8 +307,8 @@ export async function countGeneratedSheetsSince(userId: number, since: Date): Pr
   const result = await db
     .select({ count: sql<number>`count(*)` })
     .from(generatedSheets)
-    .where(and(eq(generatedSheets.userId, userId), sql`${generatedSheets.createdAt} >= ${since}`));
-  return result[0]?.count ?? 0;
+    .where(and(eq(generatedSheets.userId, userId), gte(generatedSheets.createdAt, since)));
+  return Number(result[0]?.count ?? 0);
 }
 
 export async function getAllGeneratedSheets(): Promise<GeneratedSheet[]> {
