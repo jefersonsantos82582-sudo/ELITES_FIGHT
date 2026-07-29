@@ -1122,6 +1122,11 @@ export default function Admin() {
                       </Card>
                     );
                   })}
+                </div>
+              )}
+            </Card>
+          </TabsContent>
+
           {/* ==================== CATEGORIAS ==================== */}
           <TabsContent value="categories" className="space-y-4">
             <Card className="p-6">
