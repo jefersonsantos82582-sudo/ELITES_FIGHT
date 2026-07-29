@@ -111,15 +111,23 @@ Gere pelo menos 5 linhas de exemplo realistas com dados variados.`,
 };
 
 /**
- * Função para chamar o Google Gemini 1.5 Flash diretamente via API do Google AI Studio
+ * Função para chamar o Google Gemini diretamente via API do Google AI Studio.
+ *
+ * Observação importante: o modelo "gemini-1.5-flash" foi descontinuado pelo Google
+ * e é redirecionado internamente para "gemini-2.5-flash", que usa "thinking" por
+ * padrão. Os tokens de raciocínio (thinking) são contabilizados dentro de
+ * maxOutputTokens, então um limite baixo (ex: 2000) fazia o modelo gastar tudo
+ * "pensando" e não sobrar texto para a resposta final — por isso a regex não
+ * encontrava o JSON. A correção: usar o modelo 2.5 explicitamente, desligar o
+ * thinking (thinkingBudget: 0) e aumentar a folga de tokens de saída.
  */
 async function callGemini(prompt: string): Promise<string> {
   if (!ENV.geminiApiKey) {
     throw new Error("GEMINI_API_KEY não configurada no Render.");
   }
 
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${ENV.geminiApiKey}`;
-  
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${ENV.geminiApiKey}`;
+
   const response = await axios.post(url, {
     contents: [
       {
@@ -130,13 +138,30 @@ async function callGemini(prompt: string): Promise<string> {
     ],
     generationConfig: {
       temperature: 0.7,
-      maxOutputTokens: 2000,
+      maxOutputTokens: 8192,
+      responseMimeType: "application/json",
+      thinkingConfig: {
+        thinkingBudget: 0,
+      },
     }
   });
 
-  const content = response.data?.candidates?.[0]?.content?.parts?.[0]?.text;
+  const candidate = response.data?.candidates?.[0];
+  const content = candidate?.content?.parts?.[0]?.text;
+
   if (!content) {
-    throw new Error("Resposta vazia do Gemini");
+    const finishReason = candidate?.finishReason;
+    console.error(
+      "[AI Sheet Generator] Resposta vazia do Gemini. finishReason:",
+      finishReason,
+      "payload:",
+      JSON.stringify(response.data).slice(0, 1000)
+    );
+    throw new Error(
+      finishReason === "MAX_TOKENS"
+        ? "Resposta vazia do Gemini: limite de tokens atingido antes de gerar a resposta final."
+        : "Resposta vazia do Gemini"
+    );
   }
   return content;
 }
@@ -177,9 +202,19 @@ Gere ${request.rowCount || 5} linhas de dados de exemplo.`;
       throw new Error("Nenhuma resposta recebida da IA");
     }
 
+    // Remove possíveis cercas de código markdown (```json ... ```) antes de extrair o JSON
+    const cleanedContent = content
+      .replace(/```json/gi, "")
+      .replace(/```/g, "")
+      .trim();
+
     // Extract JSON from response
-    const jsonMatch = content.match(/\{[\s\S]*\}/);
+    const jsonMatch = cleanedContent.match(/\{[\s\S]*\}/);
     if (!jsonMatch) {
+      console.error(
+        "[AI Sheet Generator] Conteúdo recebido sem JSON:",
+        content.slice(0, 500)
+      );
       throw new Error("Não foi possível extrair JSON da resposta da IA");
     }
 
