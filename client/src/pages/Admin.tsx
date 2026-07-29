@@ -10,13 +10,58 @@ import {
   LayoutDashboard, Users, FileSpreadsheet, Settings,
   ShieldAlert, Loader2, AlertCircle, RefreshCw, Key,
   Crown, Dice1, Trophy, UserCheck, UserX, Ban, Eye,
-  ArrowUpRight, ArrowDownRight, Sparkles, Gift, Zap
+  ArrowUpRight, ArrowDownRight, Sparkles, Gift, Zap,
+  FolderKanban, Palette, Plus, Pencil, Trash2, X
 } from "lucide-react";
 import DashboardLayout from "@/components/DashboardLayout";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
+
+interface ColumnDefUI {
+  key: string;
+  label: string;
+  type: string;
+}
+
+interface ThemeUI {
+  name: string;
+  header: string;
+  accent: string;
+  plan: "free" | "pro" | "elite";
+}
+
+const emptyTemplateForm = {
+  id: null as number | null,
+  name: "",
+  slug: "",
+  categoryId: "",
+  plan: "free" as "free" | "pro" | "elite",
+  description: "",
+  headerColor: "#D4AF37",
+  accentColor: "#1A1A1A",
+  isFeatured: false,
+  columns: [{ key: "item", label: "Item", type: "text" }] as ColumnDefUI[],
+};
+
+const emptyCategoryForm = {
+  id: null as number | null,
+  name: "",
+  slug: "",
+  description: "",
+  icon: "",
+  displayOrder: 0,
+};
+
+function slugify(text: string) {
+  return text
+    .toLowerCase()
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/(^-|-$)/g, "");
+}
 
 interface UserInfo {
   id: number;
@@ -51,6 +96,28 @@ export default function Admin() {
   const [upgradeUserId, setUpgradeUserId] = useState<number | null>(null);
   const [upgradePlan, setUpgradePlan] = useState<"free" | "pro" | "elite">("pro");
   const [showUpgradeDialog, setShowUpgradeDialog] = useState(false);
+
+  // Categorias
+  const [categoryForm, setCategoryForm] = useState(emptyCategoryForm);
+  const [showCategoryDialog, setShowCategoryDialog] = useState(false);
+
+  // Modelos (form)
+  const [templateForm, setTemplateForm] = useState(emptyTemplateForm);
+  const [showTemplateDialog, setShowTemplateDialog] = useState(false);
+
+  // Cores (temas)
+  const defaultThemes: ThemeUI[] = [
+    { name: "Ouro Premium", header: "#D4AF37", accent: "#1A1A1A", plan: "free" },
+    { name: "Azul Executivo", header: "#1E40AF", accent: "#1E3A8A", plan: "free" },
+    { name: "Verde Corporativo", header: "#059669", accent: "#064E3B", plan: "free" },
+    { name: "Vermelho Elite", header: "#DC2626", accent: "#7F1D1D", plan: "free" },
+    { name: "Roxo Moderno", header: "#7C3AED", accent: "#4C1D95", plan: "free" },
+    { name: "Cinza Elegante", header: "#4B5563", accent: "#1F2937", plan: "free" },
+    { name: "Laranja Vibrante", header: "#EA580C", accent: "#7C2D12", plan: "pro" },
+    { name: "Teal Moderno", header: "#0F766E", accent: "#134E4A", plan: "pro" },
+  ];
+  const [themes, setThemes] = useState<ThemeUI[]>(defaultThemes);
+  const [themesLoaded, setThemesLoaded] = useState(false);
 
   // Modal de sorteio
   const [showDrawDialog, setShowDrawDialog] = useState(false);
@@ -136,6 +203,26 @@ export default function Admin() {
     retry: false,
   });
 
+  const categoriesQuery = trpc.admin.listAllCategories.useQuery(undefined, {
+    enabled: isAuthorized,
+    retry: false,
+  });
+
+  const settingsQuery = trpc.admin.getSettings.useQuery(undefined, {
+    enabled: isAuthorized,
+    retry: false,
+  });
+
+  useEffect(() => {
+    if (!themesLoaded && settingsQuery.data) {
+      const themesSetting = settingsQuery.data.find((s: any) => s.key === "themes");
+      if (themesSetting?.value && Array.isArray(themesSetting.value) && themesSetting.value.length > 0) {
+        setThemes(themesSetting.value as ThemeUI[]);
+      }
+      setThemesLoaded(true);
+    }
+  }, [settingsQuery.data, themesLoaded]);
+
   const addAdminMutation = trpc.admin.addAdmin.useMutation({
     onSuccess: () => {
       toast.success("Administrador adicionado com sucesso!");
@@ -196,6 +283,8 @@ export default function Admin() {
     onSuccess: () => {
       toast.success("Modelo criado com sucesso!");
       templatesQuery.refetch();
+      setShowTemplateDialog(false);
+      setTemplateForm(emptyTemplateForm);
     },
     onError: (err) => {
       toast.error(`Erro: ${err.message}`);
@@ -216,11 +305,179 @@ export default function Admin() {
     onSuccess: () => {
       toast.success("Modelo atualizado!");
       templatesQuery.refetch();
+      setShowTemplateDialog(false);
+      setTemplateForm(emptyTemplateForm);
     },
     onError: (err) => {
       toast.error(`Erro: ${err.message}`);
     }
   });
+
+  const createCategoryMutation = trpc.admin.createCategory.useMutation({
+    onSuccess: () => {
+      toast.success("Categoria criada com sucesso!");
+      categoriesQuery.refetch();
+      setShowCategoryDialog(false);
+      setCategoryForm(emptyCategoryForm);
+    },
+    onError: (err) => {
+      toast.error(`Erro: ${err.message}`);
+    }
+  });
+
+  const updateCategoryMutation = trpc.admin.updateCategory.useMutation({
+    onSuccess: () => {
+      toast.success("Categoria atualizada!");
+      categoriesQuery.refetch();
+      setShowCategoryDialog(false);
+      setCategoryForm(emptyCategoryForm);
+    },
+    onError: (err) => {
+      toast.error(`Erro: ${err.message}`);
+    }
+  });
+
+  const deleteCategoryMutation = trpc.admin.deleteCategory.useMutation({
+    onSuccess: () => {
+      toast.success("Categoria removida!");
+      categoriesQuery.refetch();
+    },
+    onError: (err) => {
+      toast.error(`Erro ao remover categoria: ${err.message}`);
+    }
+  });
+
+  const updateSettingMutation = trpc.admin.updateSetting.useMutation({
+    onSuccess: () => {
+      toast.success("Cores salvas com sucesso!");
+      settingsQuery.refetch();
+    },
+    onError: (err) => {
+      toast.error(`Erro: ${err.message}`);
+    }
+  });
+
+  const openNewCategory = () => {
+    setCategoryForm(emptyCategoryForm);
+    setShowCategoryDialog(true);
+  };
+
+  const openEditCategory = (cat: any) => {
+    setCategoryForm({
+      id: cat.id,
+      name: cat.name,
+      slug: cat.slug,
+      description: cat.description || "",
+      icon: cat.icon || "",
+      displayOrder: cat.displayOrder ?? 0,
+    });
+    setShowCategoryDialog(true);
+  };
+
+  const handleSaveCategory = () => {
+    if (!categoryForm.name.trim() || !categoryForm.slug.trim()) {
+      toast.error("Nome e slug são obrigatórios");
+      return;
+    }
+    const payload = {
+      name: categoryForm.name,
+      slug: categoryForm.slug,
+      description: categoryForm.description || undefined,
+      icon: categoryForm.icon || undefined,
+      displayOrder: categoryForm.displayOrder,
+    };
+    if (categoryForm.id) {
+      updateCategoryMutation.mutate({ id: categoryForm.id, ...payload });
+    } else {
+      createCategoryMutation.mutate(payload);
+    }
+  };
+
+  const openNewTemplate = () => {
+    setTemplateForm(emptyTemplateForm);
+    setShowTemplateDialog(true);
+  };
+
+  const openEditTemplate = (tpl: any) => {
+    setTemplateForm({
+      id: tpl.id,
+      name: tpl.name,
+      slug: tpl.slug,
+      categoryId: String(tpl.categoryId),
+      plan: tpl.plan,
+      description: tpl.description || "",
+      headerColor: tpl.headerColor || "#D4AF37",
+      accentColor: tpl.accentColor || "#1A1A1A",
+      isFeatured: !!tpl.isFeatured,
+      columns: Array.isArray(tpl.columns) && tpl.columns.length > 0 ? tpl.columns : emptyTemplateForm.columns,
+    });
+    setShowTemplateDialog(true);
+  };
+
+  const handleSaveTemplate = () => {
+    if (!templateForm.name.trim() || !templateForm.slug.trim() || !templateForm.categoryId) {
+      toast.error("Nome, slug e categoria são obrigatórios");
+      return;
+    }
+    const columns = templateForm.columns.filter(c => c.key.trim() && c.label.trim());
+    if (columns.length === 0) {
+      toast.error("Adicione ao menos uma coluna");
+      return;
+    }
+    const basePayload = {
+      name: templateForm.name,
+      slug: templateForm.slug,
+      description: templateForm.description || undefined,
+      plan: templateForm.plan,
+      columns,
+      headerColor: templateForm.headerColor,
+      accentColor: templateForm.accentColor,
+    };
+    if (templateForm.id) {
+      updateTemplateMutation.mutate({
+        id: templateForm.id,
+        ...basePayload,
+        categoryId: parseInt(templateForm.categoryId),
+        isFeatured: templateForm.isFeatured,
+      });
+    } else {
+      createTemplateMutation.mutate({
+        ...basePayload,
+        categoryId: parseInt(templateForm.categoryId),
+      });
+    }
+  };
+
+  const addColumnRow = () => {
+    setTemplateForm(f => ({ ...f, columns: [...f.columns, { key: "", label: "", type: "text" }] }));
+  };
+
+  const removeColumnRow = (idx: number) => {
+    setTemplateForm(f => ({ ...f, columns: f.columns.filter((_, i) => i !== idx) }));
+  };
+
+  const updateColumnRow = (idx: number, field: keyof ColumnDefUI, value: string) => {
+    setTemplateForm(f => ({
+      ...f,
+      columns: f.columns.map((c, i) => (i === idx ? { ...c, [field]: value } : c)),
+    }));
+  };
+
+  const addTheme = () => {
+    setThemes(t => [...t, { name: "Novo Tema", header: "#D4AF37", accent: "#1A1A1A", plan: "free" }]);
+  };
+
+  const removeTheme = (idx: number) => {
+    setThemes(t => t.filter((_, i) => i !== idx));
+  };
+
+  const updateThemeField = (idx: number, field: keyof ThemeUI, value: string) => {
+    setThemes(t => t.map((theme, i) => (i === idx ? { ...theme, [field]: value } : theme)));
+  };
+
+  const saveThemes = () => {
+    updateSettingMutation.mutate({ key: "themes", value: themes });
+  };
 
   // Sorteio
   const handleDraw = () => {
@@ -355,6 +612,12 @@ export default function Admin() {
             </TabsTrigger>
             <TabsTrigger value="templates" className="gap-2">
               <FileSpreadsheet className="h-4 w-4" /> Modelos
+            </TabsTrigger>
+            <TabsTrigger value="categories" className="gap-2">
+              <FolderKanban className="h-4 w-4" /> Categorias
+            </TabsTrigger>
+            <TabsTrigger value="colors" className="gap-2">
+              <Palette className="h-4 w-4" /> Cores
             </TabsTrigger>
             <TabsTrigger value="draw" className="gap-2">
               <Dice1 className="h-4 w-4" /> Sorteio
@@ -598,9 +861,14 @@ export default function Admin() {
                   <FileSpreadsheet className="w-4 h-4 text-primary" />
                   Modelos de Planilhas
                 </h3>
-                <Badge variant="outline">
-                  {templatesQuery.data?.length || 0} modelos
-                </Badge>
+                <div className="flex items-center gap-2">
+                  <Badge variant="outline">
+                    {templatesQuery.data?.length || 0} modelos
+                  </Badge>
+                  <Button size="sm" className="bg-gold-gradient text-black font-semibold" onClick={openNewTemplate}>
+                    <Plus className="w-4 h-4 mr-1" /> Novo Modelo
+                  </Button>
+                </div>
               </div>
 
               {templatesQuery.isLoading ? (
@@ -644,6 +912,18 @@ export default function Admin() {
                           </td>
                           <td className="p-3">
                             <div className="flex items-center justify-end gap-1">
+                              <div className="flex items-center gap-1 mr-2">
+                                <div className="w-4 h-4 rounded border border-border/30" style={{ backgroundColor: tpl.headerColor || "#D4AF37" }} title="Cor do cabeçalho" />
+                                <div className="w-4 h-4 rounded border border-border/30" style={{ backgroundColor: tpl.accentColor || "#1A1A1A" }} title="Cor de destaque" />
+                              </div>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => openEditTemplate(tpl)}
+                                title="Editar"
+                              >
+                                <Pencil className="w-3.5 h-3.5" />
+                              </Button>
                               <Button
                                 variant="ghost"
                                 size="sm"
@@ -667,7 +947,7 @@ export default function Admin() {
                                 }}
                                 title="Deletar"
                               >
-                                <Ban className="w-3.5 h-3.5 text-destructive" />
+                                <Trash2 className="w-3.5 h-3.5 text-destructive" />
                               </Button>
                             </div>
                           </td>
@@ -677,6 +957,158 @@ export default function Admin() {
                   </table>
                 </div>
               )}
+            </Card>
+          </TabsContent>
+
+          {/* ==================== CATEGORIAS ==================== */}
+          <TabsContent value="categories" className="space-y-4">
+            <Card className="p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="font-semibold flex items-center gap-2">
+                  <FolderKanban className="w-4 h-4 text-primary" />
+                  Categorias
+                </h3>
+                <div className="flex items-center gap-2">
+                  <Badge variant="outline">{categoriesQuery.data?.length || 0} categorias</Badge>
+                  <Button size="sm" className="bg-gold-gradient text-black font-semibold" onClick={openNewCategory}>
+                    <Plus className="w-4 h-4 mr-1" /> Nova Categoria
+                  </Button>
+                </div>
+              </div>
+
+              {categoriesQuery.isLoading ? (
+                <div className="space-y-2">
+                  {[1, 2, 3].map(i => <div key={i} className="h-14 bg-muted/30 rounded animate-pulse" />)}
+                </div>
+              ) : categoriesQuery.data?.length === 0 ? (
+                <p className="text-center text-muted-foreground py-8">Nenhuma categoria cadastrada.</p>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-border/50">
+                        <th className="text-left p-3 font-medium">Nome</th>
+                        <th className="text-left p-3 font-medium">Slug</th>
+                        <th className="text-left p-3 font-medium">Ordem</th>
+                        <th className="text-right p-3 font-medium">Ações</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {categoriesQuery.data?.map((cat: any) => (
+                        <tr key={cat.id} className="border-b border-border/20 hover:bg-muted/20">
+                          <td className="p-3 font-medium">{cat.name}</td>
+                          <td className="p-3 text-muted-foreground">{cat.slug}</td>
+                          <td className="p-3 text-muted-foreground">{cat.displayOrder}</td>
+                          <td className="p-3">
+                            <div className="flex items-center justify-end gap-1">
+                              <Button variant="ghost" size="sm" onClick={() => openEditCategory(cat)} title="Editar">
+                                <Pencil className="w-3.5 h-3.5" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => {
+                                  if (confirm(`Deletar categoria "${cat.name}"? Modelos vinculados podem ficar órfãos.`)) {
+                                    deleteCategoryMutation.mutate({ id: cat.id });
+                                  }
+                                }}
+                                title="Deletar"
+                              >
+                                <Trash2 className="w-3.5 h-3.5 text-destructive" />
+                              </Button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </Card>
+          </TabsContent>
+
+          {/* ==================== CORES ==================== */}
+          <TabsContent value="colors" className="space-y-4">
+            <Card className="p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="font-semibold flex items-center gap-2">
+                  <Palette className="w-4 h-4 text-primary" />
+                  Temas de Cores
+                </h3>
+                <div className="flex items-center gap-2">
+                  <Button size="sm" variant="outline" onClick={addTheme}>
+                    <Plus className="w-4 h-4 mr-1" /> Adicionar Tema
+                  </Button>
+                  <Button
+                    size="sm"
+                    className="bg-gold-gradient text-black font-semibold"
+                    onClick={saveThemes}
+                    disabled={updateSettingMutation.isPending}
+                  >
+                    {updateSettingMutation.isPending ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : null}
+                    Salvar Cores
+                  </Button>
+                </div>
+              </div>
+              <p className="text-sm text-muted-foreground mb-4">
+                Estes temas aparecem para os usuários na etapa de personalização da planilha.
+              </p>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                {themes.map((theme, idx) => (
+                  <Card key={idx} className="p-4 space-y-3 border-border/30">
+                    <div className="flex items-center justify-between">
+                      <Input
+                        value={theme.name}
+                        onChange={e => updateThemeField(idx, "name", e.target.value)}
+                        className="text-sm font-medium"
+                      />
+                      <Button variant="ghost" size="sm" onClick={() => removeTheme(idx)} title="Remover tema">
+                        <X className="w-4 h-4 text-destructive" />
+                      </Button>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <Label className="text-xs">Cabeçalho</Label>
+                        <div className="flex items-center gap-1 mt-1">
+                          <input
+                            type="color"
+                            value={theme.header}
+                            onChange={e => updateThemeField(idx, "header", e.target.value)}
+                            className="w-8 h-8 rounded border border-border/30 cursor-pointer"
+                          />
+                          <Input value={theme.header} onChange={e => updateThemeField(idx, "header", e.target.value)} className="text-xs" />
+                        </div>
+                      </div>
+                      <div>
+                        <Label className="text-xs">Destaque</Label>
+                        <div className="flex items-center gap-1 mt-1">
+                          <input
+                            type="color"
+                            value={theme.accent}
+                            onChange={e => updateThemeField(idx, "accent", e.target.value)}
+                            className="w-8 h-8 rounded border border-border/30 cursor-pointer"
+                          />
+                          <Input value={theme.accent} onChange={e => updateThemeField(idx, "accent", e.target.value)} className="text-xs" />
+                        </div>
+                      </div>
+                    </div>
+                    <div>
+                      <Label className="text-xs">Plano mínimo</Label>
+                      <Select value={theme.plan} onValueChange={(v) => updateThemeField(idx, "plan", v)}>
+                        <SelectTrigger className="mt-1 h-8 text-xs">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="free">FREE</SelectItem>
+                          <SelectItem value="pro">PRO</SelectItem>
+                          <SelectItem value="elite">ELITE</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </Card>
+                ))}
+              </div>
             </Card>
           </TabsContent>
 
@@ -987,6 +1419,241 @@ export default function Admin() {
               </div>
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* ==================== DIALOG: CATEGORIA ==================== */}
+      <Dialog open={showCategoryDialog} onOpenChange={setShowCategoryDialog}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>{categoryForm.id ? "Editar Categoria" : "Nova Categoria"}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label>Nome</Label>
+              <Input
+                className="mt-1.5"
+                value={categoryForm.name}
+                onChange={e => {
+                  const name = e.target.value;
+                  setCategoryForm(f => ({ ...f, name, slug: f.id ? f.slug : slugify(name) }));
+                }}
+                placeholder="Ex: Finanças Pessoais"
+              />
+            </div>
+            <div>
+              <Label>Slug</Label>
+              <Input
+                className="mt-1.5"
+                value={categoryForm.slug}
+                onChange={e => setCategoryForm(f => ({ ...f, slug: slugify(e.target.value) }))}
+                placeholder="ex-financas-pessoais"
+              />
+            </div>
+            <div>
+              <Label>Descrição</Label>
+              <Textarea
+                className="mt-1.5"
+                value={categoryForm.description}
+                onChange={e => setCategoryForm(f => ({ ...f, description: e.target.value }))}
+                placeholder="Descrição curta da categoria"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label>Ícone (lucide-react)</Label>
+                <Input
+                  className="mt-1.5"
+                  value={categoryForm.icon}
+                  onChange={e => setCategoryForm(f => ({ ...f, icon: e.target.value }))}
+                  placeholder="Ex: Wallet"
+                />
+              </div>
+              <div>
+                <Label>Ordem de exibição</Label>
+                <Input
+                  type="number"
+                  className="mt-1.5"
+                  value={categoryForm.displayOrder}
+                  onChange={e => setCategoryForm(f => ({ ...f, displayOrder: parseInt(e.target.value) || 0 }))}
+                />
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowCategoryDialog(false)}>Cancelar</Button>
+            <Button
+              className="bg-gold-gradient text-black font-semibold"
+              onClick={handleSaveCategory}
+              disabled={createCategoryMutation.isPending || updateCategoryMutation.isPending}
+            >
+              {(createCategoryMutation.isPending || updateCategoryMutation.isPending) && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+              Salvar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ==================== DIALOG: MODELO ==================== */}
+      <Dialog open={showTemplateDialog} onOpenChange={setShowTemplateDialog}>
+        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>{templateForm.id ? "Editar Modelo" : "Novo Modelo"}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label>Nome</Label>
+                <Input
+                  className="mt-1.5"
+                  value={templateForm.name}
+                  onChange={e => {
+                    const name = e.target.value;
+                    setTemplateForm(f => ({ ...f, name, slug: f.id ? f.slug : slugify(name) }));
+                  }}
+                  placeholder="Ex: Controle Financeiro Mensal"
+                />
+              </div>
+              <div>
+                <Label>Slug</Label>
+                <Input
+                  className="mt-1.5"
+                  value={templateForm.slug}
+                  onChange={e => setTemplateForm(f => ({ ...f, slug: slugify(e.target.value) }))}
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label>Categoria</Label>
+                <Select value={templateForm.categoryId} onValueChange={(v) => setTemplateForm(f => ({ ...f, categoryId: v }))}>
+                  <SelectTrigger className="mt-1.5">
+                    <SelectValue placeholder="Selecione" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {categoriesQuery.data?.map((cat: any) => (
+                      <SelectItem key={cat.id} value={String(cat.id)}>{cat.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label>Plano necessário</Label>
+                <Select value={templateForm.plan} onValueChange={(v) => setTemplateForm(f => ({ ...f, plan: v as any }))}>
+                  <SelectTrigger className="mt-1.5">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="free">FREE</SelectItem>
+                    <SelectItem value="pro">PRO</SelectItem>
+                    <SelectItem value="elite">ELITE</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div>
+              <Label>Descrição</Label>
+              <Textarea
+                className="mt-1.5"
+                value={templateForm.description}
+                onChange={e => setTemplateForm(f => ({ ...f, description: e.target.value }))}
+                placeholder="Descrição curta do modelo"
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label>Cor do cabeçalho</Label>
+                <div className="flex items-center gap-2 mt-1.5">
+                  <input
+                    type="color"
+                    value={templateForm.headerColor}
+                    onChange={e => setTemplateForm(f => ({ ...f, headerColor: e.target.value }))}
+                    className="w-10 h-10 rounded-lg border border-border/30 cursor-pointer"
+                  />
+                  <Input value={templateForm.headerColor} onChange={e => setTemplateForm(f => ({ ...f, headerColor: e.target.value }))} className="flex-1" />
+                </div>
+              </div>
+              <div>
+                <Label>Cor de destaque</Label>
+                <div className="flex items-center gap-2 mt-1.5">
+                  <input
+                    type="color"
+                    value={templateForm.accentColor}
+                    onChange={e => setTemplateForm(f => ({ ...f, accentColor: e.target.value }))}
+                    className="w-10 h-10 rounded-lg border border-border/30 cursor-pointer"
+                  />
+                  <Input value={templateForm.accentColor} onChange={e => setTemplateForm(f => ({ ...f, accentColor: e.target.value }))} className="flex-1" />
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                id="isFeatured"
+                checked={templateForm.isFeatured}
+                onChange={e => setTemplateForm(f => ({ ...f, isFeatured: e.target.checked }))}
+                className="h-4 w-4"
+              />
+              <Label htmlFor="isFeatured">Destacar na página inicial</Label>
+            </div>
+
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <Label>Colunas da planilha</Label>
+                <Button variant="outline" size="sm" onClick={addColumnRow}>
+                  <Plus className="w-3.5 h-3.5 mr-1" /> Coluna
+                </Button>
+              </div>
+              <div className="space-y-2">
+                {templateForm.columns.map((col, idx) => (
+                  <div key={idx} className="flex items-center gap-2">
+                    <Input
+                      placeholder="chave (ex: item)"
+                      value={col.key}
+                      onChange={e => updateColumnRow(idx, "key", e.target.value)}
+                      className="flex-1"
+                    />
+                    <Input
+                      placeholder="rótulo (ex: Item)"
+                      value={col.label}
+                      onChange={e => updateColumnRow(idx, "label", e.target.value)}
+                      className="flex-1"
+                    />
+                    <Select value={col.type} onValueChange={(v) => updateColumnRow(idx, "type", v)}>
+                      <SelectTrigger className="w-28">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="text">Texto</SelectItem>
+                        <SelectItem value="number">Número</SelectItem>
+                        <SelectItem value="currency">Moeda</SelectItem>
+                        <SelectItem value="date">Data</SelectItem>
+                        <SelectItem value="percent">Porcentagem</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <Button variant="ghost" size="sm" onClick={() => removeColumnRow(idx)} disabled={templateForm.columns.length <= 1}>
+                      <X className="w-4 h-4 text-destructive" />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowTemplateDialog(false)}>Cancelar</Button>
+            <Button
+              className="bg-gold-gradient text-black font-semibold"
+              onClick={handleSaveTemplate}
+              disabled={createTemplateMutation.isPending || updateTemplateMutation.isPending}
+            >
+              {(createTemplateMutation.isPending || updateTemplateMutation.isPending) && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+              Salvar
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </DashboardLayout>
