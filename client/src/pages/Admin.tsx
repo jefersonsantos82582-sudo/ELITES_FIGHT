@@ -36,21 +36,22 @@ interface UserInfo {
   planExpiresAt: Date | null;
 }
 
-const AUTHORIZED_ADMINS = ["jefersonsantos82582@gmail.com"];
-
 export default function Admin() {
   const { user, loading: authLoading } = useAuth();
   const [adminEmail, setAdminEmail] = useState("");
   const [adminPass, setAdminPass] = useState("");
   const [isAuthorized, setIsAuthorized] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
-  const [checkingLogin, setCheckingLogin] = useState(false);
+  const [loggingIn, setLoggingIn] = useState(false);
 
   // Edição de plano/preço
   const [editingPlanCode, setEditingPlanCode] = useState<string | null>(null);
   const [planForm, setPlanForm] = useState<{ priceMonthly: string; priceYearly: string; maxAiUses: number; maxTemplates: number; description: string }>({
     priceMonthly: "", priceYearly: "", maxAiUses: 0, maxTemplates: 0, description: "",
   });
+
+  // Gestão de administradores
+  const [newAdminEmail, setNewAdminEmail] = useState("");
 
   // Modal de upgrade manual
   const [upgradeUserId, setUpgradeUserId] = useState<number | null>(null);
@@ -67,31 +68,39 @@ export default function Admin() {
   const [selectedUser, setSelectedUser] = useState<UserInfo | null>(null);
   const [showUserDialog, setShowUserDialog] = useState(false);
 
-  // Verificar autorização inicial: login já feito via Google com e-mail de admin,
-  // ou já tem cookie de chave+email válidos salvos de uma sessão anterior.
+  // Verificar autorização inicial (sessão normal com role/email admin, ou cookie já emitido pelo login)
   useEffect(() => {
-    const isEmailAuthorized = user && AUTHORIZED_ADMINS.includes((user.email || "").toLowerCase());
-
     const cookies = document.cookie.split('; ');
     const hasKey = cookies.some(row => row.startsWith('admin_key='));
     const hasEmailCookie = cookies.some(row => row.startsWith('admin_email='));
 
-    if ((hasKey && hasEmailCookie) || isEmailAuthorized || user?.role === "admin") {
+    if ((hasKey && hasEmailCookie) || user?.role === "admin") {
       setIsAuthorized(true);
     }
   }, [user]);
 
-  const handleAdminLogin = async (e: React.FormEvent) => {
+  const loginMutation = trpc.admin.login.useMutation({
+    onSuccess: () => {
+      window.location.reload();
+    },
+    onError: (err) => {
+      setAuthError(err.message || "E-mail ou senha de acesso inválidos.");
+      setLoggingIn(false);
+    },
+  });
+
+  const logoutMutation = trpc.admin.logout.useMutation({
+    onSuccess: () => {
+      window.location.reload();
+    },
+  });
+
+  const handleAdminLogin = (e: React.FormEvent) => {
     e.preventDefault();
     setAuthError(null);
 
-    const emailNormalized = adminEmail.trim().toLowerCase();
-    if (!emailNormalized) {
-      setAuthError("Digite o e-mail de administrador");
-      return;
-    }
-    if (!AUTHORIZED_ADMINS.includes(emailNormalized)) {
-      setAuthError("Este e-mail não está na lista de administradores");
+    if (!adminEmail) {
+      setAuthError("Digite o e-mail de acesso");
       return;
     }
     if (!adminPass) {
@@ -99,30 +108,8 @@ export default function Admin() {
       return;
     }
 
-    setCheckingLogin(true);
-    try {
-      // Testa as credenciais direto contra o servidor antes de liberar o painel
-      const res = await fetch("/api/trpc/admin.stats", {
-        headers: {
-          "x-admin-key": adminPass,
-          "x-admin-email": emailNormalized,
-        },
-      });
-      const ok = res.status === 200;
-
-      if (!ok) {
-        setAuthError("Senha ou e-mail incorretos.");
-        setCheckingLogin(false);
-        return;
-      }
-
-      document.cookie = `admin_key=${adminPass}; path=/; max-age=86400; SameSite=Lax`;
-      document.cookie = `admin_email=${emailNormalized}; path=/; max-age=86400; SameSite=Lax`;
-      window.location.reload();
-    } catch {
-      setAuthError("Não foi possível validar o acesso. Tente novamente.");
-      setCheckingLogin(false);
-    }
+    setLoggingIn(true);
+    loginMutation.mutate({ email: adminEmail, password: adminPass });
   };
 
   // Queries administrativas
@@ -164,6 +151,32 @@ export default function Admin() {
   const templatesQuery = trpc.admin.listAllTemplates.useQuery(undefined, {
     enabled: isAuthorized,
     retry: false,
+  });
+
+  const adminsQuery = trpc.admin.listAdmins.useQuery(undefined, {
+    enabled: isAuthorized,
+    retry: false,
+  });
+
+  const addAdminMutation = trpc.admin.addAdmin.useMutation({
+    onSuccess: () => {
+      toast.success("Administrador adicionado com sucesso!");
+      adminsQuery.refetch();
+      setNewAdminEmail("");
+    },
+    onError: (err) => {
+      toast.error(`Erro ao adicionar administrador: ${err.message}`);
+    },
+  });
+
+  const removeAdminMutation = trpc.admin.removeAdmin.useMutation({
+    onSuccess: () => {
+      toast.success("Administrador removido!");
+      adminsQuery.refetch();
+    },
+    onError: (err) => {
+      toast.error(`Erro: ${err.message}`);
+    },
   });
 
   // Mutations
@@ -274,19 +287,19 @@ export default function Admin() {
               </div>
               <h1 className="text-2xl font-bold">Painel Administrativo</h1>
               <p className="text-muted-foreground text-sm mt-2">
-                Acesso restrito. Informe o e-mail autorizado e a senha de acesso.
+                Acesso restrito. Insira seu e-mail e a chave de segurança.
               </p>
             </div>
 
             <form onSubmit={handleAdminLogin} className="space-y-5">
               <div className="space-y-2">
-                <Label htmlFor="admin-email">E-mail de administrador</Label>
+                <Label htmlFor="admin-email">E-mail de Acesso</Label>
                 <div className="relative">
-                  <Mail className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                  <Users className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
                   <Input
                     id="admin-email"
                     type="email"
-                    placeholder="seuemail@gmail.com"
+                    placeholder="seu@email.com"
                     className="pl-10"
                     value={adminEmail}
                     onChange={(e) => setAdminEmail(e.target.value)}
@@ -296,7 +309,7 @@ export default function Admin() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="admin-key">Senha de Acesso</Label>
+                <Label htmlFor="admin-key">Chave de Acesso</Label>
                 <div className="relative">
                   <Key className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
                   <Input
@@ -318,8 +331,8 @@ export default function Admin() {
                 </p>
               )}
 
-              <Button type="submit" className="w-full bg-gold-gradient text-black font-bold" disabled={checkingLogin}>
-                {checkingLogin ? (
+              <Button type="submit" className="w-full bg-gold-gradient text-black font-bold" disabled={loggingIn}>
+                {loggingIn ? (
                   <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Verificando...</>
                 ) : (
                   "Liberar Acesso"
@@ -348,11 +361,7 @@ export default function Admin() {
             <Button
               variant="outline"
               size="sm"
-              onClick={() => {
-                document.cookie = "admin_key=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
-                document.cookie = "admin_email=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
-                window.location.reload();
-              }}
+              onClick={() => logoutMutation.mutate()}
             >
               Sair do Painel
             </Button>
@@ -375,6 +384,9 @@ export default function Admin() {
             </TabsTrigger>
             <TabsTrigger value="draw" className="gap-2">
               <Dice1 className="h-4 w-4" /> Sorteio
+            </TabsTrigger>
+            <TabsTrigger value="admins" className="gap-2">
+              <ShieldAlert className="h-4 w-4" /> Administradores
             </TabsTrigger>
           </TabsList>
 
@@ -913,6 +925,83 @@ export default function Admin() {
                   </div>
                 )}
               </div>
+            </Card>
+          </TabsContent>
+
+          {/* ==================== ADMINISTRADORES ==================== */}
+          <TabsContent value="admins" className="space-y-4">
+            <Card className="p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="font-semibold flex items-center gap-2">
+                  <ShieldAlert className="w-4 h-4 text-primary" />
+                  Administradores do Painel
+                </h3>
+                <Badge variant="outline">
+                  {adminsQuery.data?.length || 0} administradores
+                </Badge>
+              </div>
+              <p className="text-sm text-muted-foreground mb-6">
+                Qualquer e-mail nesta lista consegue acessar o painel em <code>/admin</code> usando a mesma chave de acesso.
+                Adicione o e-mail de quem deve ter controle total do site.
+              </p>
+
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  if (!newAdminEmail) return;
+                  addAdminMutation.mutate({ email: newAdminEmail });
+                }}
+                className="flex flex-col sm:flex-row gap-2 mb-6"
+              >
+                <Input
+                  type="email"
+                  placeholder="novoadmin@email.com"
+                  value={newAdminEmail}
+                  onChange={(e) => setNewAdminEmail(e.target.value)}
+                  className="flex-1"
+                />
+                <Button type="submit" disabled={addAdminMutation.isPending} className="bg-gold-gradient text-black font-bold">
+                  {addAdminMutation.isPending ? (
+                    <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Adicionando...</>
+                  ) : (
+                    <>Adicionar Administrador</>
+                  )}
+                </Button>
+              </form>
+
+              {adminsQuery.isLoading ? (
+                <div className="space-y-2">
+                  {[1, 2].map(i => (
+                    <div key={i} className="h-12 bg-muted/30 rounded animate-pulse" />
+                  ))}
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {adminsQuery.data?.map((email) => (
+                    <div key={email} className="flex items-center justify-between p-3 bg-muted/30 rounded-lg">
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-sm font-bold">
+                          {email[0].toUpperCase()}
+                        </div>
+                        <p className="text-sm font-medium">{email}</p>
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => {
+                          if (confirm(`Remover acesso de administrador de ${email}?`)) {
+                            removeAdminMutation.mutate({ email });
+                          }
+                        }}
+                        disabled={removeAdminMutation.isPending}
+                        title="Remover acesso"
+                      >
+                        <Ban className="w-3.5 h-3.5 text-destructive" />
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              )}
             </Card>
           </TabsContent>
         </Tabs>

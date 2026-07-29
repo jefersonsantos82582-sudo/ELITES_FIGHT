@@ -384,6 +384,39 @@ export async function upsertSiteSetting(key: string, value: unknown): Promise<vo
     });
 }
 
+// ==================== Admin Emails ====================
+
+const ADMIN_EMAILS_KEY = "admin_emails";
+const DEFAULT_ADMIN_EMAILS = ["jefersonsantos82582@gmail.com"];
+
+export async function getAdminEmails(): Promise<string[]> {
+  const setting = await getSiteSetting(ADMIN_EMAILS_KEY);
+  if (!setting || !Array.isArray(setting.value) || setting.value.length === 0) {
+    // Seed with the default owner admin the first time this is read.
+    await upsertSiteSetting(ADMIN_EMAILS_KEY, DEFAULT_ADMIN_EMAILS);
+    return DEFAULT_ADMIN_EMAILS;
+  }
+  return (setting.value as string[]).map(e => e.toLowerCase().trim());
+}
+
+export async function addAdminEmail(email: string): Promise<string[]> {
+  const normalized = email.toLowerCase().trim();
+  const current = await getAdminEmails();
+  if (!current.includes(normalized)) {
+    current.push(normalized);
+    await upsertSiteSetting(ADMIN_EMAILS_KEY, current);
+  }
+  return current;
+}
+
+export async function removeAdminEmail(email: string): Promise<string[]> {
+  const normalized = email.toLowerCase().trim();
+  const current = await getAdminEmails();
+  const updated = current.filter(e => e !== normalized);
+  await upsertSiteSetting(ADMIN_EMAILS_KEY, updated.length > 0 ? updated : DEFAULT_ADMIN_EMAILS);
+  return updated.length > 0 ? updated : DEFAULT_ADMIN_EMAILS;
+}
+
 // ==================== Coupons ====================
 
 export async function getCouponByCode(code: string) {
