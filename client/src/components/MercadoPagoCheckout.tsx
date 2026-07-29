@@ -163,28 +163,42 @@ export default function MercadoPagoCheckout({
 
   return (
     <div className="w-full space-y-4">
-      <div id="wallet_container" ref={containerRef} className="min-h-[120px] flex items-center justify-center">
+      <div className="relative min-h-[120px]">
+        {/*
+          O SDK do Mercado Pago manipula este nó diretamente via DOM.
+          Ele NUNCA deve ter filhos controlados pelo React, senão o
+          "Bricks.create" falha silenciosamente por conflito com o
+          virtual DOM do React, deixando o container vazio.
+        */}
+        <div id="wallet_container" ref={containerRef} className="min-h-[120px]" />
+
         {brickError ? (
-          <div className="text-center py-6 w-full">
-            <AlertCircle className="w-8 h-8 text-destructive mx-auto mb-3" />
-            <p className="text-sm text-destructive mb-3">{brickError}</p>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleRetry}
-            >
-              Tentar novamente
-            </Button>
+          <div className="absolute inset-0 flex items-center justify-center bg-background">
+            <div className="text-center py-6 w-full">
+              <AlertCircle className="w-8 h-8 text-destructive mx-auto mb-3" />
+              <p className="text-sm text-destructive mb-3">{brickError}</p>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleRetry}
+              >
+                Tentar novamente
+              </Button>
+            </div>
           </div>
         ) : !sdkLoaded || isLoading ? (
-          <div className="flex flex-col items-center gap-2">
-            <Loader2 className="w-8 h-8 animate-spin text-primary" />
-            <p className="text-sm text-muted-foreground">Carregando opções de pagamento...</p>
+          <div className="absolute inset-0 flex items-center justify-center bg-background pointer-events-none">
+            <div className="flex flex-col items-center gap-2">
+              <Loader2 className="w-8 h-8 animate-spin text-primary" />
+              <p className="text-sm text-muted-foreground">Carregando opções de pagamento...</p>
+            </div>
           </div>
         ) : !brickMounted ? (
-          <div className="flex flex-col items-center gap-2">
-            <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
-            <p className="text-xs text-muted-foreground">Preparando checkout...</p>
+          <div className="absolute inset-0 flex items-center justify-center bg-background pointer-events-none">
+            <div className="flex flex-col items-center gap-2">
+              <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+              <p className="text-xs text-muted-foreground">Preparando checkout...</p>
+            </div>
           </div>
         ) : null}
       </div>
