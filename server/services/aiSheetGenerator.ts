@@ -118,7 +118,7 @@ async function callGemini(prompt: string): Promise<string> {
     throw new Error("GEMINI_API_KEY não configurada no Render.");
   }
 
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${ENV.geminiApiKey}`;
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${ENV.geminiApiKey}`;
   
   const response = await axios.post(url, {
     contents: [
