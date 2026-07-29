@@ -75,7 +75,13 @@ export default function Home() {
             <Button 
               size="lg" 
               className="w-full sm:w-auto bg-gold-gradient text-black font-semibold text-base h-12 px-8"
-              onClick={() => setLocation(user ? "/dashboard" : "/loading")}
+              onClick={() => {
+                if (user) {
+                  setLocation("/dashboard");
+                } else {
+                  login("/loading");
+                }
+              }}
             >
               Começar Agora
               <ArrowRight className="w-4 h-4 ml-2" />
