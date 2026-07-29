@@ -37,20 +37,30 @@ export const adminProcedure = t.procedure.use(
     const adminKeyFromCookie = ctx.req.cookies["admin_key"];
     const adminKey = adminKeyFromHeader || adminKeyFromCookie;
 
-    // Validar chave usando variável de ambiente
-    const VALID_ADMIN_KEY = process.env.ADMIN_KEY;
-    const isValidKey = VALID_ADMIN_KEY && adminKey && adminKey === VALID_ADMIN_KEY;
+    // E-mail informado junto da chave (login manual da tela /admin)
+    const adminEmailFromHeader = ctx.req.headers["x-admin-email"];
+    const adminEmailFromCookie = ctx.req.cookies["admin_email"];
+    const adminEmail = String(adminEmailFromHeader || adminEmailFromCookie || "").toLowerCase();
 
-    // Lista de e-mails autorizados
+    // Validar chave usando variável de ambiente (com fallback para a senha definida pelo dono do projeto)
+    const VALID_ADMIN_KEY = process.env.ADMIN_KEY || "A2M8O9J3@";
+
+    // Lista de e-mails autorizados a acessar o painel admin
     const AUTHORIZED_ADMINS = ["jefersonsantos82582@gmail.com"];
 
-    // Verificar se o usuário tem role admin no banco
+    // Login via senha + e-mail (tela /admin): exige AS DUAS coisas corretas
+    const isValidKeyLogin =
+      !!adminKey &&
+      adminKey === VALID_ADMIN_KEY &&
+      AUTHORIZED_ADMINS.includes(adminEmail);
+
+    // Verificar se o usuário tem role admin no banco (login normal via Google)
     const isRoleAdmin = ctx.user && ctx.user.role === "admin";
 
-    // Verificar email autorizado
-    const isEmailAuthorized = ctx.user && AUTHORIZED_ADMINS.includes(ctx.user.email || "");
+    // Verificar email autorizado (login normal via Google)
+    const isEmailAuthorized = ctx.user && AUTHORIZED_ADMINS.includes((ctx.user.email || "").toLowerCase());
 
-    const hasAccess = isRoleAdmin || isEmailAuthorized || isValidKey;
+    const hasAccess = isRoleAdmin || isEmailAuthorized || isValidKeyLogin;
 
     if (!hasAccess) {
       console.error("[Admin] Acesso negado. Não autorizado.");

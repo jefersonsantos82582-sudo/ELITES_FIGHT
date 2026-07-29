@@ -8,9 +8,9 @@ import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   LayoutDashboard, Users, FileSpreadsheet, Settings,
-  ShieldAlert, Loader2, AlertCircle, RefreshCw, Key,
+  ShieldAlert, Loader2, AlertCircle, RefreshCw, Key, Mail,
   Crown, Dice1, Trophy, UserCheck, UserX, Ban, Eye,
-  ArrowUpRight, ArrowDownRight, Sparkles, Gift, Zap
+  ArrowUpRight, ArrowDownRight, Sparkles, Gift, Zap, DollarSign, Save
 } from "lucide-react";
 import DashboardLayout from "@/components/DashboardLayout";
 import { Badge } from "@/components/ui/badge";
@@ -36,11 +36,21 @@ interface UserInfo {
   planExpiresAt: Date | null;
 }
 
+const AUTHORIZED_ADMINS = ["jefersonsantos82582@gmail.com"];
+
 export default function Admin() {
   const { user, loading: authLoading } = useAuth();
+  const [adminEmail, setAdminEmail] = useState("");
   const [adminPass, setAdminPass] = useState("");
   const [isAuthorized, setIsAuthorized] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
+  const [checkingLogin, setCheckingLogin] = useState(false);
+
+  // Edição de plano/preço
+  const [editingPlanCode, setEditingPlanCode] = useState<string | null>(null);
+  const [planForm, setPlanForm] = useState<{ priceMonthly: string; priceYearly: string; maxAiUses: number; maxTemplates: number; description: string }>({
+    priceMonthly: "", priceYearly: "", maxAiUses: 0, maxTemplates: 0, description: "",
+  });
 
   // Modal de upgrade manual
   const [upgradeUserId, setUpgradeUserId] = useState<number | null>(null);
@@ -57,29 +67,62 @@ export default function Admin() {
   const [selectedUser, setSelectedUser] = useState<UserInfo | null>(null);
   const [showUserDialog, setShowUserDialog] = useState(false);
 
-  // Verificar autorização inicial
+  // Verificar autorização inicial: login já feito via Google com e-mail de admin,
+  // ou já tem cookie de chave+email válidos salvos de uma sessão anterior.
   useEffect(() => {
-    const AUTHORIZED_ADMINS = ["jefersonsantos82582@gmail.com"];
-    const isEmailAuthorized = user && AUTHORIZED_ADMINS.includes(user.email || "");
+    const isEmailAuthorized = user && AUTHORIZED_ADMINS.includes((user.email || "").toLowerCase());
 
     const cookies = document.cookie.split('; ');
-    const adminCookie = cookies.find(row => row.startsWith('admin_key='));
-    const hasKey = !!adminCookie;
+    const hasKey = cookies.some(row => row.startsWith('admin_key='));
+    const hasEmailCookie = cookies.some(row => row.startsWith('admin_email='));
 
-    if (hasKey || isEmailAuthorized || user?.role === "admin") {
+    if ((hasKey && hasEmailCookie) || isEmailAuthorized || user?.role === "admin") {
       setIsAuthorized(true);
     }
   }, [user]);
 
-  const handleAdminLogin = (e: React.FormEvent) => {
+  const handleAdminLogin = async (e: React.FormEvent) => {
     e.preventDefault();
+    setAuthError(null);
+
+    const emailNormalized = adminEmail.trim().toLowerCase();
+    if (!emailNormalized) {
+      setAuthError("Digite o e-mail de administrador");
+      return;
+    }
+    if (!AUTHORIZED_ADMINS.includes(emailNormalized)) {
+      setAuthError("Este e-mail não está na lista de administradores");
+      return;
+    }
     if (!adminPass) {
-      setAuthError("Digite a chave de acesso");
+      setAuthError("Digite a senha de acesso");
       return;
     }
 
-    document.cookie = `admin_key=${adminPass}; path=/; max-age=86400; SameSite=Lax`;
-    window.location.reload();
+    setCheckingLogin(true);
+    try {
+      // Testa as credenciais direto contra o servidor antes de liberar o painel
+      const res = await fetch("/api/trpc/admin.stats", {
+        headers: {
+          "x-admin-key": adminPass,
+          "x-admin-email": emailNormalized,
+        },
+      });
+      const ok = res.status === 200;
+
+      if (!ok) {
+        setAuthError("Senha ou e-mail incorretos.");
+        setCheckingLogin(false);
+        return;
+      }
+
+      document.cookie = `admin_key=${adminPass}; path=/; max-age=86400; SameSite=Lax`;
+      document.cookie = `admin_email=${emailNormalized}; path=/; max-age=86400; SameSite=Lax`;
+      window.location.reload();
+    } catch {
+      setAuthError("Não foi possível validar o acesso. Tente novamente.");
+      setCheckingLogin(false);
+    }
   };
 
   // Queries administrativas
@@ -92,9 +135,25 @@ export default function Admin() {
     const err = statsQuery.error;
     if (err && (err.message.includes("FORBIDDEN") || err.message.includes("UNAUTHORIZED"))) {
       setIsAuthorized(false);
-      setAuthError("Chave de acesso inválida ou expirada.");
+      setAuthError("Sessão de administrador inválida ou expirada. Faça login novamente.");
     }
   }, [statsQuery.error]);
+
+  const plansQuery = trpc.plans.list.useQuery(undefined, {
+    enabled: isAuthorized,
+    retry: false,
+  });
+
+  const updatePlanMutation = trpc.admin.updatePlan.useMutation({
+    onSuccess: () => {
+      toast.success("Plano atualizado com sucesso!");
+      plansQuery.refetch();
+      setEditingPlanCode(null);
+    },
+    onError: (err) => {
+      toast.error(`Erro ao atualizar plano: ${err.message}`);
+    }
+  });
 
   const usersQuery = trpc.admin.listAllUsers.useQuery(undefined, {
     enabled: isAuthorized,
@@ -215,13 +274,29 @@ export default function Admin() {
               </div>
               <h1 className="text-2xl font-bold">Painel Administrativo</h1>
               <p className="text-muted-foreground text-sm mt-2">
-                Acesso restrito. Insira sua chave de segurança.
+                Acesso restrito. Informe o e-mail autorizado e a senha de acesso.
               </p>
             </div>
 
-            <form onSubmit={handleAdminLogin} className="space-y-6">
+            <form onSubmit={handleAdminLogin} className="space-y-5">
               <div className="space-y-2">
-                <Label htmlFor="admin-key">Chave de Acesso</Label>
+                <Label htmlFor="admin-email">E-mail de administrador</Label>
+                <div className="relative">
+                  <Mail className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    id="admin-email"
+                    type="email"
+                    placeholder="seuemail@gmail.com"
+                    className="pl-10"
+                    value={adminEmail}
+                    onChange={(e) => setAdminEmail(e.target.value)}
+                    autoComplete="username"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="admin-key">Senha de Acesso</Label>
                 <div className="relative">
                   <Key className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
                   <Input
@@ -231,18 +306,24 @@ export default function Admin() {
                     className="pl-10"
                     value={adminPass}
                     onChange={(e) => setAdminPass(e.target.value)}
+                    autoComplete="current-password"
                   />
                 </div>
-                {authError && (
-                  <p className="text-xs text-destructive flex items-center gap-1 mt-1">
-                    <AlertCircle className="h-3 w-3" />
-                    {authError}
-                  </p>
-                )}
               </div>
 
-              <Button type="submit" className="w-full bg-gold-gradient text-black font-bold">
-                Liberar Acesso
+              {authError && (
+                <p className="text-xs text-destructive flex items-center gap-1">
+                  <AlertCircle className="h-3 w-3" />
+                  {authError}
+                </p>
+              )}
+
+              <Button type="submit" className="w-full bg-gold-gradient text-black font-bold" disabled={checkingLogin}>
+                {checkingLogin ? (
+                  <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Verificando...</>
+                ) : (
+                  "Liberar Acesso"
+                )}
               </Button>
             </form>
           </Card>
@@ -269,6 +350,7 @@ export default function Admin() {
               size="sm"
               onClick={() => {
                 document.cookie = "admin_key=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
+                document.cookie = "admin_email=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
                 window.location.reload();
               }}
             >
@@ -287,6 +369,9 @@ export default function Admin() {
             </TabsTrigger>
             <TabsTrigger value="templates" className="gap-2">
               <FileSpreadsheet className="h-4 w-4" /> Modelos
+            </TabsTrigger>
+            <TabsTrigger value="plans" className="gap-2">
+              <DollarSign className="h-4 w-4" /> Planos e Preços
             </TabsTrigger>
             <TabsTrigger value="draw" className="gap-2">
               <Dice1 className="h-4 w-4" /> Sorteio
@@ -604,6 +689,147 @@ export default function Admin() {
                       ))}
                     </tbody>
                   </table>
+                </div>
+              )}
+            </Card>
+          </TabsContent>
+
+          {/* ==================== PLANOS E PREÇOS ==================== */}
+          <TabsContent value="plans" className="space-y-4">
+            <Card className="p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="font-semibold flex items-center gap-2">
+                  <DollarSign className="w-4 h-4 text-primary" />
+                  Planos e Preços
+                </h3>
+                <Badge variant="outline">{plansQuery.data?.length || 0} planos</Badge>
+              </div>
+
+              {plansQuery.isLoading ? (
+                <div className="space-y-2">
+                  {[1, 2, 3].map(i => (
+                    <div key={i} className="h-20 bg-muted/30 rounded animate-pulse" />
+                  ))}
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  {plansQuery.data?.map((p: any) => {
+                    const isEditing = editingPlanCode === p.code;
+                    return (
+                      <Card key={p.code} className="p-5 border-border/40">
+                        <div className="flex items-center justify-between mb-3">
+                          <Badge className={
+                            p.code === "elite" ? "bg-gold-gradient text-black" :
+                            p.code === "pro" ? "bg-primary/15 text-primary" :
+                            "bg-muted text-muted-foreground"
+                          }>{p.name || p.code.toUpperCase()}</Badge>
+                          {!isEditing && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => {
+                                setEditingPlanCode(p.code);
+                                setPlanForm({
+                                  priceMonthly: p.priceMonthly ?? "0",
+                                  priceYearly: p.priceYearly ?? "0",
+                                  maxAiUses: p.maxAiUses ?? 0,
+                                  maxTemplates: p.maxTemplates ?? 0,
+                                  description: p.description ?? "",
+                                });
+                              }}
+                            >
+                              Editar
+                            </Button>
+                          )}
+                        </div>
+
+                        {isEditing ? (
+                          <div className="space-y-3">
+                            <div>
+                              <Label className="text-xs">Preço mensal (R$)</Label>
+                              <Input
+                                value={planForm.priceMonthly}
+                                onChange={(e) => setPlanForm(f => ({ ...f, priceMonthly: e.target.value }))}
+                              />
+                            </div>
+                            <div>
+                              <Label className="text-xs">Preço anual (R$)</Label>
+                              <Input
+                                value={planForm.priceYearly}
+                                onChange={(e) => setPlanForm(f => ({ ...f, priceYearly: e.target.value }))}
+                              />
+                            </div>
+                            <div>
+                              <Label className="text-xs">Usos de IA por mês</Label>
+                              <Input
+                                type="number"
+                                value={planForm.maxAiUses}
+                                onChange={(e) => setPlanForm(f => ({ ...f, maxAiUses: Number(e.target.value) }))}
+                              />
+                            </div>
+                            <div>
+                              <Label className="text-xs">Máx. de modelos</Label>
+                              <Input
+                                type="number"
+                                value={planForm.maxTemplates}
+                                onChange={(e) => setPlanForm(f => ({ ...f, maxTemplates: Number(e.target.value) }))}
+                              />
+                            </div>
+                            <div>
+                              <Label className="text-xs">Descrição</Label>
+                              <Input
+                                value={planForm.description}
+                                onChange={(e) => setPlanForm(f => ({ ...f, description: e.target.value }))}
+                              />
+                            </div>
+                            <div className="flex gap-2 pt-1">
+                              <Button
+                                size="sm"
+                                className="bg-gold-gradient text-black font-bold flex-1"
+                                disabled={updatePlanMutation.isPending}
+                                onClick={() => {
+                                  updatePlanMutation.mutate({
+                                    id: p.id,
+                                    code: p.code,
+                                    priceMonthly: planForm.priceMonthly,
+                                    priceYearly: planForm.priceYearly,
+                                    maxAiUses: planForm.maxAiUses,
+                                    maxTemplates: planForm.maxTemplates,
+                                    description: planForm.description,
+                                  });
+                                }}
+                              >
+                                {updatePlanMutation.isPending ? (
+                                  <Loader2 className="w-4 h-4 animate-spin" />
+                                ) : (
+                                  <><Save className="w-4 h-4 mr-2" /> Salvar</>
+                                )}
+                              </Button>
+                              <Button size="sm" variant="outline" onClick={() => setEditingPlanCode(null)}>
+                                Cancelar
+                              </Button>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="space-y-2 text-sm">
+                            <p className="text-2xl font-bold">
+                              R$ {Number(p.priceMonthly ?? 0).toFixed(2)}<span className="text-sm text-muted-foreground">/mês</span>
+                            </p>
+                            <p className="text-muted-foreground text-xs">Anual: R$ {Number(p.priceYearly ?? 0).toFixed(2)}</p>
+                            <p className="text-muted-foreground text-xs">{p.description || "Sem descrição"}</p>
+                            <div className="flex items-center justify-between pt-2 text-xs">
+                              <span className="text-muted-foreground">Usos de IA/mês</span>
+                              <span className="font-medium">{p.maxAiUses}</span>
+                            </div>
+                            <div className="flex items-center justify-between text-xs">
+                              <span className="text-muted-foreground">Máx. modelos</span>
+                              <span className="font-medium">{p.maxTemplates}</span>
+                            </div>
+                          </div>
+                        )}
+                      </Card>
+                    );
+                  })}
                 </div>
               )}
             </Card>
