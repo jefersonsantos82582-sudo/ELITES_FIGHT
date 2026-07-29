@@ -38,9 +38,14 @@ interface UserInfo {
 
 export default function Admin() {
   const { user, loading: authLoading } = useAuth();
+  const [adminEmail, setAdminEmail] = useState("");
   const [adminPass, setAdminPass] = useState("");
   const [isAuthorized, setIsAuthorized] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
+  const [loggingIn, setLoggingIn] = useState(false);
+
+  // Gestão de administradores
+  const [newAdminEmail, setNewAdminEmail] = useState("");
 
   // Modal de upgrade manual
   const [upgradeUserId, setUpgradeUserId] = useState<number | null>(null);
@@ -57,29 +62,48 @@ export default function Admin() {
   const [selectedUser, setSelectedUser] = useState<UserInfo | null>(null);
   const [showUserDialog, setShowUserDialog] = useState(false);
 
-  // Verificar autorização inicial
+  // Verificar autorização inicial (sessão normal com role/email admin, ou cookie já emitido pelo login)
   useEffect(() => {
-    const AUTHORIZED_ADMINS = ["jefersonsantos82582@gmail.com"];
-    const isEmailAuthorized = user && AUTHORIZED_ADMINS.includes(user.email || "");
-
     const cookies = document.cookie.split('; ');
     const adminCookie = cookies.find(row => row.startsWith('admin_key='));
     const hasKey = !!adminCookie;
 
-    if (hasKey || isEmailAuthorized || user?.role === "admin") {
+    if (hasKey || user?.role === "admin") {
       setIsAuthorized(true);
     }
   }, [user]);
 
+  const loginMutation = trpc.admin.login.useMutation({
+    onSuccess: () => {
+      window.location.reload();
+    },
+    onError: (err) => {
+      setAuthError(err.message || "E-mail ou senha de acesso inválidos.");
+      setLoggingIn(false);
+    },
+  });
+
+  const logoutMutation = trpc.admin.logout.useMutation({
+    onSuccess: () => {
+      window.location.reload();
+    },
+  });
+
   const handleAdminLogin = (e: React.FormEvent) => {
     e.preventDefault();
+    setAuthError(null);
+
+    if (!adminEmail) {
+      setAuthError("Digite o e-mail de acesso");
+      return;
+    }
     if (!adminPass) {
       setAuthError("Digite a chave de acesso");
       return;
     }
 
-    document.cookie = `admin_key=${adminPass}; path=/; max-age=86400; SameSite=Lax`;
-    window.location.reload();
+    setLoggingIn(true);
+    loginMutation.mutate({ email: adminEmail, password: adminPass });
   };
 
   // Queries administrativas
@@ -105,6 +129,32 @@ export default function Admin() {
   const templatesQuery = trpc.admin.listAllTemplates.useQuery(undefined, {
     enabled: isAuthorized,
     retry: false,
+  });
+
+  const adminsQuery = trpc.admin.listAdmins.useQuery(undefined, {
+    enabled: isAuthorized,
+    retry: false,
+  });
+
+  const addAdminMutation = trpc.admin.addAdmin.useMutation({
+    onSuccess: () => {
+      toast.success("Administrador adicionado com sucesso!");
+      adminsQuery.refetch();
+      setNewAdminEmail("");
+    },
+    onError: (err) => {
+      toast.error(`Erro ao adicionar administrador: ${err.message}`);
+    },
+  });
+
+  const removeAdminMutation = trpc.admin.removeAdmin.useMutation({
+    onSuccess: () => {
+      toast.success("Administrador removido!");
+      adminsQuery.refetch();
+    },
+    onError: (err) => {
+      toast.error(`Erro: ${err.message}`);
+    },
   });
 
   // Mutations
@@ -215,11 +265,27 @@ export default function Admin() {
               </div>
               <h1 className="text-2xl font-bold">Painel Administrativo</h1>
               <p className="text-muted-foreground text-sm mt-2">
-                Acesso restrito. Insira sua chave de segurança.
+                Acesso restrito. Insira seu e-mail e a chave de segurança.
               </p>
             </div>
 
             <form onSubmit={handleAdminLogin} className="space-y-6">
+              <div className="space-y-2">
+                <Label htmlFor="admin-email">E-mail de Acesso</Label>
+                <div className="relative">
+                  <Users className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    id="admin-email"
+                    type="email"
+                    placeholder="seu@email.com"
+                    className="pl-10"
+                    value={adminEmail}
+                    onChange={(e) => setAdminEmail(e.target.value)}
+                    autoComplete="username"
+                  />
+                </div>
+              </div>
+
               <div className="space-y-2">
                 <Label htmlFor="admin-key">Chave de Acesso</Label>
                 <div className="relative">
@@ -231,6 +297,7 @@ export default function Admin() {
                     className="pl-10"
                     value={adminPass}
                     onChange={(e) => setAdminPass(e.target.value)}
+                    autoComplete="current-password"
                   />
                 </div>
                 {authError && (
@@ -241,8 +308,12 @@ export default function Admin() {
                 )}
               </div>
 
-              <Button type="submit" className="w-full bg-gold-gradient text-black font-bold">
-                Liberar Acesso
+              <Button type="submit" className="w-full bg-gold-gradient text-black font-bold" disabled={loggingIn}>
+                {loggingIn ? (
+                  <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Verificando...</>
+                ) : (
+                  "Liberar Acesso"
+                )}
               </Button>
             </form>
           </Card>
@@ -267,10 +338,7 @@ export default function Admin() {
             <Button
               variant="outline"
               size="sm"
-              onClick={() => {
-                document.cookie = "admin_key=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
-                window.location.reload();
-              }}
+              onClick={() => logoutMutation.mutate()}
             >
               Sair do Painel
             </Button>
@@ -290,6 +358,9 @@ export default function Admin() {
             </TabsTrigger>
             <TabsTrigger value="draw" className="gap-2">
               <Dice1 className="h-4 w-4" /> Sorteio
+            </TabsTrigger>
+            <TabsTrigger value="admins" className="gap-2">
+              <ShieldAlert className="h-4 w-4" /> Administradores
             </TabsTrigger>
           </TabsList>
 
@@ -687,6 +758,83 @@ export default function Admin() {
                   </div>
                 )}
               </div>
+            </Card>
+          </TabsContent>
+
+          {/* ==================== ADMINISTRADORES ==================== */}
+          <TabsContent value="admins" className="space-y-4">
+            <Card className="p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="font-semibold flex items-center gap-2">
+                  <ShieldAlert className="w-4 h-4 text-primary" />
+                  Administradores do Painel
+                </h3>
+                <Badge variant="outline">
+                  {adminsQuery.data?.length || 0} administradores
+                </Badge>
+              </div>
+              <p className="text-sm text-muted-foreground mb-6">
+                Qualquer e-mail nesta lista consegue acessar o painel em <code>/admin</code> usando a mesma chave de acesso.
+                Adicione o e-mail de quem deve ter controle total do site.
+              </p>
+
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  if (!newAdminEmail) return;
+                  addAdminMutation.mutate({ email: newAdminEmail });
+                }}
+                className="flex flex-col sm:flex-row gap-2 mb-6"
+              >
+                <Input
+                  type="email"
+                  placeholder="novoadmin@email.com"
+                  value={newAdminEmail}
+                  onChange={(e) => setNewAdminEmail(e.target.value)}
+                  className="flex-1"
+                />
+                <Button type="submit" disabled={addAdminMutation.isPending} className="bg-gold-gradient text-black font-bold">
+                  {addAdminMutation.isPending ? (
+                    <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Adicionando...</>
+                  ) : (
+                    <>Adicionar Administrador</>
+                  )}
+                </Button>
+              </form>
+
+              {adminsQuery.isLoading ? (
+                <div className="space-y-2">
+                  {[1, 2].map(i => (
+                    <div key={i} className="h-12 bg-muted/30 rounded animate-pulse" />
+                  ))}
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {adminsQuery.data?.map((email) => (
+                    <div key={email} className="flex items-center justify-between p-3 bg-muted/30 rounded-lg">
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-sm font-bold">
+                          {email[0].toUpperCase()}
+                        </div>
+                        <p className="text-sm font-medium">{email}</p>
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => {
+                          if (confirm(`Remover acesso de administrador de ${email}?`)) {
+                            removeAdminMutation.mutate({ email });
+                          }
+                        }}
+                        disabled={removeAdminMutation.isPending}
+                        title="Remover acesso"
+                      >
+                        <Ban className="w-3.5 h-3.5 text-destructive" />
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              )}
             </Card>
           </TabsContent>
         </Tabs>

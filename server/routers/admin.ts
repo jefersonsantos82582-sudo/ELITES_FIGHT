@@ -3,11 +3,90 @@
  * Gerencia: Usuários, Pagamentos, Planos, Modelos, Sorteio
  */
 
-import { adminProcedure, router } from "../_core/trpc";
+import { adminProcedure, ADMIN_MASTER_KEY, router } from "../_core/trpc";
+import { publicProcedure } from "../_core/trpc";
+import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import * as db from "../db";
+import { getSessionCookieOptions } from "../_core/cookies";
+
+const ONE_DAY_MS = 1000 * 60 * 60 * 24;
 
 export const adminRouter = router({
+  /**
+   * Login no painel administrativo (email + senha de acesso)
+   */
+  login: publicProcedure
+    .input(
+      z.object({
+        email: z.string().email(),
+        password: z.string().min(1),
+      })
+    )
+    .mutation(async ({ input, ctx }) => {
+      const email = input.email.toLowerCase().trim();
+      const admins = await db.getAdminEmails();
+
+      const isPasswordValid = input.password === ADMIN_MASTER_KEY;
+      const isEmailAuthorized = admins.includes(email);
+
+      if (!isPasswordValid || !isEmailAuthorized) {
+        throw new TRPCError({
+          code: "UNAUTHORIZED",
+          message: "E-mail ou senha de acesso inválidos.",
+        });
+      }
+
+      const cookieOptions = getSessionCookieOptions(ctx.req);
+      ctx.res.cookie("admin_key", input.password, { ...cookieOptions, maxAge: ONE_DAY_MS });
+      ctx.res.cookie("admin_email", email, { ...cookieOptions, maxAge: ONE_DAY_MS });
+
+      return { success: true } as const;
+    }),
+
+  /**
+   * Logout do painel administrativo
+   */
+  logout: publicProcedure.mutation(({ ctx }) => {
+    const cookieOptions = getSessionCookieOptions(ctx.req);
+    ctx.res.clearCookie("admin_key", { ...cookieOptions, maxAge: -1 });
+    ctx.res.clearCookie("admin_email", { ...cookieOptions, maxAge: -1 });
+    return { success: true } as const;
+  }),
+
+  /**
+   * Listar e-mails com acesso ao painel administrativo
+   */
+  listAdmins: adminProcedure.query(async () => {
+    return db.getAdminEmails();
+  }),
+
+  /**
+   * Adicionar um novo e-mail administrador
+   */
+  addAdmin: adminProcedure
+    .input(z.object({ email: z.string().email() }))
+    .mutation(async ({ input }) => {
+      return db.addAdminEmail(input.email);
+    }),
+
+  /**
+   * Remover um e-mail administrador
+   */
+  removeAdmin: adminProcedure
+    .input(z.object({ email: z.string().email() }))
+    .mutation(async ({ input, ctx }) => {
+      const requesterEmail = (ctx.user?.email || "").toLowerCase();
+      const target = input.email.toLowerCase().trim();
+      if (requesterEmail && requesterEmail === target) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Você não pode remover seu próprio acesso de administrador.",
+        });
+      }
+      return db.removeAdminEmail(input.email);
+    }),
+
   /**
    * Obter estatísticas gerais
    */
