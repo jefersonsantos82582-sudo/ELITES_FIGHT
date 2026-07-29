@@ -224,6 +224,25 @@ export const adminRouter = router({
     }),
 
   /**
+   * Atualizar categoria
+   */
+  updateCategory: adminProcedure
+    .input(
+      z.object({
+        id: z.number(),
+        name: z.string().min(1).optional(),
+        slug: z.string().min(1).optional(),
+        description: z.string().nullable().optional(),
+        icon: z.string().nullable().optional(),
+        displayOrder: z.number().optional(),
+      })
+    )
+    .mutation(async ({ input }) => {
+      const { id, ...data } = input;
+      return db.updateCategory(id, data);
+    }),
+
+  /**
    * Deletar categoria
    */
   deleteCategory: adminProcedure
@@ -231,6 +250,13 @@ export const adminRouter = router({
     .mutation(async ({ input }) => {
       return db.deleteCategory(input.id);
     }),
+
+  /**
+   * Listar todas as categorias (admin)
+   */
+  listAllCategories: adminProcedure.query(async () => {
+    return db.getAllCategories();
+  }),
 
   /**
    * Atualizar plano de preços
