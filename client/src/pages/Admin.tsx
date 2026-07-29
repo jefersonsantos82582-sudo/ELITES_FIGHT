@@ -135,20 +135,30 @@ export default function Admin() {
   const [selectedUser, setSelectedUser] = useState<UserInfo | null>(null);
   const [showUserDialog, setShowUserDialog] = useState(false);
 
-  // Verificar autorização inicial (sessão normal com role/email admin, ou cookie já emitido pelo login)
+  // Verificar autorização inicial (sessão normal com role/email admin).
+  // O cookie admin_key é httpOnly por segurança, então não dá pra checar via
+  // document.cookie no navegador — em vez disso, perguntamos ao servidor.
   useEffect(() => {
-    const cookies = document.cookie.split('; ');
-    const hasKey = cookies.some(row => row.startsWith('admin_key='));
-    const hasEmailCookie = cookies.some(row => row.startsWith('admin_email='));
-
-    if ((hasKey && hasEmailCookie) || user?.role === "admin") {
+    if (user?.role === "admin") {
       setIsAuthorized(true);
     }
   }, [user]);
 
+  const sessionCheckQuery = trpc.admin.checkSession.useQuery(undefined, {
+    enabled: !isAuthorized,
+    retry: false,
+  });
+
+  useEffect(() => {
+    if (sessionCheckQuery.data?.authorized) {
+      setIsAuthorized(true);
+    }
+  }, [sessionCheckQuery.data]);
+
   const loginMutation = trpc.admin.login.useMutation({
     onSuccess: () => {
-      window.location.reload();
+      setIsAuthorized(true);
+      setLoggingIn(false);
     },
     onError: (err) => {
       setAuthError(err.message || "E-mail ou senha de acesso inválidos.");

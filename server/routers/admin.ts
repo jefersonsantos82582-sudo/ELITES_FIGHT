@@ -45,6 +45,15 @@ export const adminRouter = router({
     }),
 
   /**
+   * Verifica se a sessão administrativa atual (cookie httpOnly) ainda é válida.
+   * Usado pelo front para saber se deve mostrar o painel ou a tela de login,
+   * já que o cookie admin_key é httpOnly e não pode ser lido via document.cookie.
+   */
+  checkSession: adminProcedure.query(() => {
+    return { authorized: true } as const;
+  }),
+
+  /**
    * Logout do painel administrativo
    */
   logout: publicProcedure.mutation(({ ctx }) => {
