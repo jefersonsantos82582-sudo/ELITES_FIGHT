@@ -10,7 +10,11 @@ export interface AIGenerationRequest {
 }
 
 export interface AIGenerationResponse {
-  columns: Array<{ name: string; width?: number }>;
+  columns: Array<{
+    name: string;
+    width?: number;
+    type?: "text" | "number" | "currency" | "date" | "time";
+  }>;
   sampleRows: string[][];
 }
 
@@ -30,11 +34,17 @@ Gere uma estrutura de planilha profissional para controle de bebidas com as segu
 - Data da Última Compra
 - Status (Ativo/Inativo)
 
+Para cada coluna, defina também o campo "type" com um dos valores: "text", "number", "currency" ou "date".
+Use "currency" para colunas de preço/valor monetário (Preço de Custo, Preço de Venda), "number" para colunas numéricas que não são dinheiro (Estoque Atual, Estoque Mínimo) e "date" para datas. Isso é obrigatório: colunas monetárias e numéricas SEMPRE precisam de "type" para que o total seja calculado automaticamente na planilha.
+
 Retorne APENAS um JSON válido com a seguinte estrutura:
 {
   "columns": [
-    {"name": "ID", "width": 8},
-    {"name": "Nome", "width": 20},
+    {"name": "ID", "width": 8, "type": "text"},
+    {"name": "Nome", "width": 20, "type": "text"},
+    {"name": "Preço de Custo", "width": 14, "type": "currency"},
+    {"name": "Preço de Venda", "width": 14, "type": "currency"},
+    {"name": "Estoque Atual", "width": 12, "type": "number"},
     ...
   ],
   "sampleRows": [
@@ -62,11 +72,17 @@ Gere uma estrutura de planilha profissional para controle de produtos com as seg
 - Data de Cadastro
 - Status (Ativo/Inativo)
 
+Para cada coluna, defina também o campo "type" com um dos valores: "text", "number", "currency" ou "date".
+Use "currency" para colunas de preço/valor monetário (Preço de Custo, Preço de Venda), "number" para colunas numéricas que não são dinheiro (Margem %, Estoque Atual, Estoque Mínimo) e "date" para datas. Isso é obrigatório: colunas monetárias e numéricas SEMPRE precisam de "type" para que o total seja calculado automaticamente na planilha.
+
 Retorne APENAS um JSON válido com a seguinte estrutura:
 {
   "columns": [
-    {"name": "SKU", "width": 12},
-    {"name": "Nome", "width": 25},
+    {"name": "SKU", "width": 12, "type": "text"},
+    {"name": "Nome", "width": 25, "type": "text"},
+    {"name": "Preço de Custo", "width": 14, "type": "currency"},
+    {"name": "Preço de Venda", "width": 14, "type": "currency"},
+    {"name": "Estoque Atual", "width": 12, "type": "number"},
     ...
   ],
   "sampleRows": [
@@ -94,11 +110,15 @@ Gere uma estrutura de planilha profissional para gestão de clientes com as segu
 - Categoria (Bronze/Prata/Ouro)
 - Status (Ativo/Inativo)
 
+Para cada coluna, defina também o campo "type" com um dos valores: "text", "number", "currency" ou "date".
+Use "currency" para colunas de valor monetário (Total Gasto), "number" para colunas numéricas que não são dinheiro e "date" para datas. Isso é obrigatório: colunas monetárias e numéricas SEMPRE precisam de "type" para que o total seja calculado automaticamente na planilha.
+
 Retorne APENAS um JSON válido com a seguinte estrutura:
 {
   "columns": [
-    {"name": "ID", "width": 8},
-    {"name": "Nome", "width": 22},
+    {"name": "ID", "width": 8, "type": "text"},
+    {"name": "Nome", "width": 22, "type": "text"},
+    {"name": "Total Gasto", "width": 14, "type": "currency"},
     ...
   ],
   "sampleRows": [
@@ -113,6 +133,35 @@ Gere pelo menos 5 linhas de exemplo realistas com dados variados.`,
 /**
  * Função para chamar o Google Gemini 1.5 Flash diretamente via API do Google AI Studio
  */
+// Schema estrito: obriga o Gemini a devolver JSON já no formato esperado,
+// em vez de confiar que ele "escreva" um JSON válido sozinho (isso evitava
+// erros de sintaxe como vírgula/colchete faltando no meio do array).
+const SHEET_RESPONSE_SCHEMA = {
+  type: "OBJECT",
+  properties: {
+    columns: {
+      type: "ARRAY",
+      items: {
+        type: "OBJECT",
+        properties: {
+          name: { type: "STRING" },
+          width: { type: "NUMBER" },
+          type: { type: "STRING", enum: ["text", "number", "currency", "date", "time"] },
+        },
+        required: ["name", "type"],
+      },
+    },
+    sampleRows: {
+      type: "ARRAY",
+      items: {
+        type: "ARRAY",
+        items: { type: "STRING" },
+      },
+    },
+  },
+  required: ["columns", "sampleRows"],
+};
+
 async function callGemini(prompt: string): Promise<string> {
   if (!ENV.geminiApiKey) {
     throw new Error("GEMINI_API_KEY não configurada no Render.");

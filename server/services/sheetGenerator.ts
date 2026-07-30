@@ -6,10 +6,41 @@ import ExcelJS from "exceljs";
  */
 export interface ColumnDef {
   name: string;
-  type: "text" | "number" | "currency" | "date" | "time" | "formula";
+  type?: "text" | "number" | "currency" | "date" | "time" | "formula";
   width?: number;
   format?: string;
   formula?: string;
+}
+
+const VALID_TYPES = new Set(["text", "number", "currency", "date", "time", "formula"]);
+
+// Palavras-chave usadas para inferir o tipo de uma coluna quando o template
+// (ou a IA) não define `type` explicitamente. Isso garante que a linha de
+// TOTAL some automaticamente valores monetários/numéricos mesmo em planilhas
+// antigas ou geradas por IA, que nunca vêm com `type` preenchido.
+const CURRENCY_NAME_HINTS =
+  /valor|preç|prec|custo|venda|saldo|entrada|sa[ií]da|or[çc]ado|realizado|diferen[çc]a|receita|despesa|total gasto|gasto|estimado|mensalidade|sal[áa]rio|pagamento|pre[çc]o/i;
+const NUMBER_NAME_HINTS = /quantidade|estoque|m[ií]nimo|qtd|margem|percentual|score|nota\b/i;
+const DATE_NAME_HINTS = /\bdata\b|nascimento|in[íi]cio|prazo|vencimento|entrega|cadastro|compra/i;
+
+/**
+ * Resolve o tipo efetivo de uma coluna: usa `col.type` quando válido, senão
+ * infere a partir do nome da coluna e, em último caso, da amostra de valores.
+ */
+function resolveColumnType(col: ColumnDef, sampleValues: unknown[]): NonNullable<ColumnDef["type"]> {
+  if (col.type && VALID_TYPES.has(col.type)) return col.type;
+
+  const name = col.name || "";
+  if (CURRENCY_NAME_HINTS.test(name)) return "currency";
+  if (NUMBER_NAME_HINTS.test(name)) return "number";
+  if (DATE_NAME_HINTS.test(name)) return "date";
+
+  const nonEmpty = sampleValues.filter((v) => v !== undefined && v !== null && v !== "");
+  if (nonEmpty.length > 0 && nonEmpty.every((v) => v !== "" && !isNaN(parseFloat(String(v).replace(",", "."))))) {
+    return "number";
+  }
+
+  return "text";
 }
 
 export interface GenerateOptions {
@@ -31,6 +62,34 @@ function hexToARGB(hex: string): string {
   if (clean.length === 6) return `FF${clean}`;
   if (clean.length === 8) return clean;
   return "FFD4AF37";
+}
+
+const DESCRIPTION_COLUMN_NAME = /^descri[çc][ãa]o$|^description$/i;
+
+/**
+ * Remove qualquer coluna de "Descrição" de um conjunto de colunas/linhas de
+ * amostra. Usado na geração de planilhas normais (não-IA): esse tipo de
+ * planilha usa modelos com estrutura fixa e não deve incluir um campo de
+ * descrição livre — diferente da geração com IA, que usa a descrição do
+ * usuário apenas como entrada para montar a estrutura, não como coluna.
+ */
+export function stripDescriptionColumn(
+  columns: ColumnDef[],
+  sampleRows?: unknown[][]
+): { columns: ColumnDef[]; sampleRows?: unknown[][] } {
+  const dropIndexes = columns
+    .map((col, idx) => (DESCRIPTION_COLUMN_NAME.test((col.name || "").trim()) ? idx : -1))
+    .filter((idx) => idx !== -1);
+
+  if (dropIndexes.length === 0) {
+    return { columns, sampleRows };
+  }
+
+  const dropSet = new Set(dropIndexes);
+  const filteredColumns = columns.filter((_, idx) => !dropSet.has(idx));
+  const filteredSampleRows = sampleRows?.map((row) => row.filter((_, idx) => !dropSet.has(idx)));
+
+  return { columns: filteredColumns, sampleRows: filteredSampleRows };
 }
 
 /**
@@ -95,6 +154,15 @@ export async function generateSpreadsheet(opts: GenerateOptions): Promise<Buffer
   const dataStartRow = 3;
   const totalDataRows = Math.max(sampleRows.length, 20); // minimum 20 empty rows
 
+  // Resolve o tipo efetivo de cada coluna uma única vez (usa o tipo salvo,
+  // ou infere pelo nome/amostra). É isso que garante que colunas de valor
+  // (ex: "Valor", "Preço de Venda", "Total Gasto") sejam somadas automaticamente
+  // na linha de TOTAL, mesmo em templates antigos ou planilhas geradas por IA
+  // que não têm o campo `type` preenchido.
+  const resolvedTypes = cols.map((col, cIdx) =>
+    resolveColumnType(col, sampleRows.map((row) => row?.[cIdx]))
+  );
+
   for (let r = 0; r < totalDataRows; r++) {
     const rowIdx = dataStartRow + r;
     const row = ws.getRow(rowIdx);
@@ -102,7 +170,7 @@ export async function generateSpreadsheet(opts: GenerateOptions): Promise<Buffer
 
     cols.forEach((col, cIdx) => {
       const cell = ws.getCell(rowIdx, cIdx + 1);
-      const colLetter = ws.getColumn(cIdx + 1).letter || String.fromCharCode(65 + cIdx);
+      const colType = resolvedTypes[cIdx];
 
       // Alternating row fill for readability
       if (r % 2 === 1) {
@@ -122,39 +190,41 @@ export async function generateSpreadsheet(opts: GenerateOptions): Promise<Buffer
 
       cell.font = { name: "Inter", size: 10, color: { argb: "FF111827" } };
 
-      if (col.type === "formula" && col.formula) {
+      if (colType === "formula" && col.formula) {
         const formula = col.formula.replace(/\{row\}/g, String(rowIdx));
         cell.value = { formula };
       } else if (sample && sample[cIdx] !== undefined && sample[cIdx] !== "") {
         const val = sample[cIdx];
-        if (col.type === "number" || col.type === "currency") {
-          cell.value = parseFloat(String(val)) || 0;
-        } else if (col.type === "date") {
-          cell.value = new Date(String(val));
+        if (colType === "number" || colType === "currency") {
+          const parsed = parseFloat(String(val).replace(/[^\d,.-]/g, "").replace(",", "."));
+          cell.value = isNaN(parsed) ? 0 : parsed;
+        } else if (colType === "date") {
+          const parsedDate = new Date(String(val));
+          cell.value = isNaN(parsedDate.getTime()) ? String(val) : parsedDate;
         } else {
           cell.value = String(val);
         }
       }
 
-      // Apply number formats
-      if (col.format) {
-        if (col.type === "currency") {
-          cell.numFmt = 'R$ #,##0.00';
-        } else if (col.type === "date") {
-          cell.numFmt = 'dd/mm/yyyy';
-        } else if (col.type === "time") {
-          cell.numFmt = 'hh:mm';
-        } else if (col.type === "number") {
-          cell.numFmt = col.format;
-        } else if (col.type === "formula") {
-          cell.numFmt = col.format;
-        }
+      // Apply number formats — aplicado independentemente de `col.format`
+      // estar definido, para que colunas de moeda/data sempre fiquem
+      // formatadas corretamente mesmo sem configuração manual do admin.
+      if (colType === "currency") {
+        cell.numFmt = "R$ #,##0.00";
+      } else if (colType === "date") {
+        cell.numFmt = "dd/mm/yyyy";
+      } else if (colType === "time") {
+        cell.numFmt = "hh:mm";
+      } else if (colType === "number") {
+        cell.numFmt = col.format || "#,##0.00";
+      } else if (colType === "formula" && col.format) {
+        cell.numFmt = col.format;
       }
 
       // Alignment per type
-      if (col.type === "currency" || col.type === "number" || col.type === "formula") {
+      if (colType === "currency" || colType === "number" || colType === "formula") {
         cell.alignment = { horizontal: "right" };
-      } else if (col.type === "date" || col.type === "time") {
+      } else if (colType === "date" || colType === "time") {
         cell.alignment = { horizontal: "center" };
       } else {
         cell.alignment = { horizontal: "left" };
@@ -168,6 +238,7 @@ export async function generateSpreadsheet(opts: GenerateOptions): Promise<Buffer
   const summaryRow = dataStartRow + totalDataRows;
   cols.forEach((col, cIdx) => {
     const cell = ws.getCell(summaryRow, cIdx + 1);
+    const colType = resolvedTypes[cIdx];
     cell.font = { name: "Inter", size: 10, bold: true, color: { argb: "FFFFFFFF" } };
     cell.fill = {
       type: "pattern",
@@ -179,10 +250,10 @@ export async function generateSpreadsheet(opts: GenerateOptions): Promise<Buffer
       bottom: { style: "thin", color: { argb: headerARGB } },
     };
 
-    if (col.type === "currency" || col.type === "number") {
+    if (colType === "currency" || colType === "number") {
       const colLetter = String.fromCharCode(65 + cIdx);
       cell.value = { formula: `SUM(${colLetter}${dataStartRow}:${colLetter}${summaryRow - 1})` };
-      cell.numFmt = col.type === "currency" ? 'R$ #,##0.00' : (col.format || '#,##0');
+      cell.numFmt = colType === "currency" ? "R$ #,##0.00" : (col.format || "#,##0.00");
       cell.alignment = { horizontal: "right" };
     } else if (cIdx === 0) {
       cell.value = "TOTAL";
