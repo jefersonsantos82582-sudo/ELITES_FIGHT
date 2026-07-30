@@ -196,9 +196,17 @@ export async function generateSheetWithAI(
   const prompt = MODEL_PROMPTS[request.modelType];
   const userMessage = `${prompt}
 
-Contexto adicional do usuário: ${request.description}
+IMPORTANTE — instrução do cliente tem prioridade sobre a lista de colunas acima:
+A lista de colunas sugerida acima é apenas um PONTO DE PARTIDA. O que o cliente pediu abaixo em "Pedido do cliente" é a fonte da verdade e DEVE ser refletido na estrutura final da planilha:
+- Se o cliente mencionar colunas/campos específicos que não estão na lista sugerida, ADICIONE essas colunas.
+- Se o cliente disser que não precisa de alguma coluna da lista sugerida, REMOVA essa coluna.
+- Se o cliente pedir para renomear, reordenar ou focar em algum aspecto específico, siga o pedido dele.
+- Se o cliente descrever um negócio/uso diferente do genérico (ex.: tipo específico de produto, setor, forma de cobrança, etc.), adapte os nomes das colunas e os dados de exemplo para esse contexto real, não apenas o genérico.
+- Só use a lista sugerida como está se o cliente não tiver pedido nada que a contradiga ou complemente.
 
-Gere ${request.rowCount || 5} linhas de dados de exemplo.`;
+Pedido do cliente (siga isso rigorosamente): "${request.description}"
+
+Gere ${request.rowCount || 5} linhas de dados de exemplo coerentes com o pedido do cliente.`;
 
   try {
     let content: string;
