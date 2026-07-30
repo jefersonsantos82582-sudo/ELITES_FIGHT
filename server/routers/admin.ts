@@ -321,6 +321,7 @@ export const adminRouter = router({
         maxTemplates: z.number().optional(),
         maxThemes: z.number().optional(),
         maxAiUses: z.number().optional(),
+        maxSheetsPerMonth: z.number().min(0).optional(),
         unlimitedSheets: z.boolean().optional(),
         hasWatermark: z.boolean().optional(),
         customLogo: z.boolean().optional(),

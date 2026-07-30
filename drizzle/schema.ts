@@ -86,6 +86,7 @@ export const plans = pgTable("plans", {
   maxTemplates: integer("maxTemplates").default(5).notNull(),
   maxThemes: integer("maxThemes").default(5).notNull(),
   maxAiUses: integer("maxAiUses").default(0).notNull(),
+  maxSheetsPerMonth: integer("maxSheetsPerMonth").default(1).notNull(),
   unlimitedSheets: boolean("unlimitedSheets").default(false).notNull(),
   hasWatermark: boolean("hasWatermark").default(true).notNull(),
   customLogo: boolean("customLogo").default(false).notNull(),

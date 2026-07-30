@@ -3,7 +3,7 @@
  * Gerencia: Planos, Pagamentos, Usuários, Modelos, Configurações
  */
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   LayoutDashboard, Users, FileSpreadsheet, DollarSign, Settings,
   TrendingUp, FileDown, UserCog, Trash2, Plus, Edit, Ban, CheckCircle,
@@ -18,6 +18,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { trpc } from "@/lib/trpc";
 import { useAuth } from "@/_core/hooks/useAuth";
@@ -277,6 +278,17 @@ function PlanDialog({ open, onOpenChange, plan }: any) {
   const [priceMonthly, setPriceMonthly] = useState(plan?.priceMonthly || "0");
   const [priceYearly, setPriceYearly] = useState(plan?.priceYearly || "0");
   const [description, setDescription] = useState(plan?.description || "");
+  const [maxSheetsPerMonth, setMaxSheetsPerMonth] = useState(String(plan?.maxSheetsPerMonth ?? 1));
+  const [unlimitedSheets, setUnlimitedSheets] = useState(Boolean(plan?.unlimitedSheets));
+
+  useEffect(() => {
+    if (!plan) return;
+    setPriceMonthly(plan.priceMonthly || "0");
+    setPriceYearly(plan.priceYearly || "0");
+    setDescription(plan.description || "");
+    setMaxSheetsPerMonth(String(plan.maxSheetsPerMonth ?? 1));
+    setUnlimitedSheets(Boolean(plan.unlimitedSheets));
+  }, [plan]);
 
   const updateMutation = trpc.admin.updatePlan.useMutation({
     onSuccess: () => {
@@ -295,6 +307,8 @@ function PlanDialog({ open, onOpenChange, plan }: any) {
       priceMonthly,
       priceYearly,
       description,
+      maxSheetsPerMonth: Number(maxSheetsPerMonth) || 0,
+      unlimitedSheets,
     });
   };
 
@@ -333,6 +347,23 @@ function PlanDialog({ open, onOpenChange, plan }: any) {
               className="mt-1"
             />
           </div>
+          <div className="flex items-center justify-between rounded-md border border-border/30 p-3">
+            <Label className="mb-0">Planilhas ilimitadas por mês</Label>
+            <Switch checked={unlimitedSheets} onCheckedChange={setUnlimitedSheets} />
+          </div>
+          {!unlimitedSheets && (
+            <div>
+              <Label>Planilhas por mês</Label>
+              <Input
+                type="number"
+                min={0}
+                step="1"
+                value={maxSheetsPerMonth}
+                onChange={(e) => setMaxSheetsPerMonth(e.target.value)}
+                className="mt-1"
+              />
+            </div>
+          )}
           <Button
             onClick={handleSave}
             disabled={updateMutation.isPending}

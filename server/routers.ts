@@ -113,6 +113,7 @@ export const appRouter = router({
         hasWatermark: plan?.hasWatermark ?? true,
         sheetsGenerated: recentSheets.length,
         sheetsGeneratedThisMonth,
+        maxSheetsPerMonth: plan?.maxSheetsPerMonth ?? 1,
         unlimitedSheets: plan?.unlimitedSheets ?? false,
         recentSheets: recentSheets.slice(0, 10),
         totalSheets: recentSheets.length,
@@ -235,7 +236,8 @@ export const appRouter = router({
         startOfMonth.setDate(1);
         startOfMonth.setHours(0, 0, 0, 0);
         const generatedThisMonth = await db.countGeneratedSheetsSince(user.id, startOfMonth);
-        if (generatedThisMonth >= 1) {
+        const monthlyLimit = plan.maxSheetsPerMonth ?? 1;
+        if (generatedThisMonth >= monthlyLimit) {
           throw new Error("Você atingiu o limite mensal de planilhas do seu plano. Faça upgrade para gerar mais!");
         }
       }
