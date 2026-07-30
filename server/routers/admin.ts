@@ -103,13 +103,18 @@ export const adminRouter = router({
     const users = await db.getAllUsers();
     const sheets = await db.getAllGeneratedSheets();
 
-    const planCounts = {
-      free: users.filter(u => u.plan === "free").length,
-      pro: users.filter(u => u.plan === "pro").length,
-      elite: users.filter(u => u.plan === "elite").length,
-    };
-
-    const monthlyRevenue = planCounts.pro * 14.99 + planCounts.elite * 24.99;
+    const allPlans = await db.getAllPlans();
+    const planCounts: Record<string, number> = {};
+    for (const p of allPlans) {
+      planCounts[p.code] = users.filter(u => u.plan === p.code).length;
+    }
+    let monthlyRevenue = 0;
+    for (const p of allPlans) {
+      const price = parseFloat(p.priceMonthly || "0");
+      if (price > 0 && planCounts[p.code]) {
+        monthlyRevenue += planCounts[p.code] * price;
+      }
+    }
 
     return {
       totalUsers: users.length,
@@ -117,6 +122,7 @@ export const adminRouter = router({
       totalTemplates: (await db.getAllTemplates()).length,
       planCounts,
       monthlyRevenue,
+      allPlans,
     };
   }),
 
@@ -153,7 +159,7 @@ export const adminRouter = router({
         name: z.string().min(1).max(200),
         slug: z.string().min(1).max(220),
         description: z.string().optional(),
-        plan: z.enum(["free", "pro", "elite"]).default("free"),
+        plan: z.string().min(1).max(60).default("free"),
         columns: z.any(),
         headerColor: z.string().optional(),
         accentColor: z.string().optional(),
@@ -187,7 +193,7 @@ export const adminRouter = router({
         slug: z.string().optional(),
         categoryId: z.number().optional(),
         description: z.string().optional(),
-        plan: z.enum(["free", "pro", "elite"]).optional(),
+        plan: z.string().min(1).max(60).optional(),
         columns: z.any().optional(),
         headerColor: z.string().optional(),
         accentColor: z.string().optional(),
@@ -268,25 +274,72 @@ export const adminRouter = router({
   }),
 
   /**
-   * Atualizar plano de preços
+   * Listar todos os planos
+   */
+  listAllPlans: adminProcedure.query(async () => {
+    return db.getAllPlans();
+  }),
+
+  /**
+   * Criar novo plano
+   */
+  createPlan: adminProcedure
+    .input(
+      z.object({
+        code: z.string().min(1).max(60),
+        name: z.string().min(1).max(60),
+        priceMonthly: z.string().default("0"),
+        priceYearly: z.string().default("0"),
+        description: z.string().optional(),
+        features: z.array(z.string()).default([]),
+        maxTemplates: z.number().default(5),
+        maxThemes: z.number().default(5),
+        maxAiUses: z.number().default(0),
+        unlimitedSheets: z.boolean().default(false),
+        hasWatermark: z.boolean().default(true),
+        customLogo: z.boolean().default(false),
+        displayOrder: z.number().default(0),
+      })
+    )
+    .mutation(async ({ input }) => {
+      return db.createPlan(input);
+    }),
+
+  /**
+   * Atualizar plano
    */
   updatePlan: adminProcedure
     .input(
       z.object({
         id: z.number(),
-        code: z.enum(["free", "pro", "elite"]),
+        code: z.string().max(60).optional(),
+        name: z.string().optional(),
         priceMonthly: z.string().optional(),
         priceYearly: z.string().optional(),
         description: z.string().optional(),
+        features: z.array(z.string()).optional(),
         maxTemplates: z.number().optional(),
         maxThemes: z.number().optional(),
         maxAiUses: z.number().optional(),
-        features: z.array(z.string()).optional(),
+        unlimitedSheets: z.boolean().optional(),
+        hasWatermark: z.boolean().optional(),
+        customLogo: z.boolean().optional(),
+        isActive: z.boolean().optional(),
+        displayOrder: z.number().optional(),
       })
     )
     .mutation(async ({ input }) => {
-      const { id, code, ...data } = input;
-      return db.updatePlan(code, data);
+      const { id, ...data } = input;
+      return db.updatePlan(id, data);
+    }),
+
+  /**
+   * Deletar plano
+   */
+  deletePlan: adminProcedure
+    .input(z.object({ id: z.number() }))
+    .mutation(async ({ input }) => {
+      return db.deletePlan(input.id);
     }),
 
   /**
@@ -296,15 +349,18 @@ export const adminRouter = router({
     .input(
       z.object({
         userId: z.number(),
-        plan: z.enum(["free", "pro", "elite"]),
+        plan: z.string().min(1).max(60),
         days: z.number().optional().default(30),
       })
     )
     .mutation(async ({ input }) => {
+      const planInfo = await db.getPlanByCode(input.plan);
       let expiresAt: Date | undefined;
-      if (input.plan !== "free" && input.days > 0) {
+      if (planInfo && parseFloat(planInfo.priceMonthly || "0") > 0 && input.days > 0) {
         expiresAt = new Date();
         expiresAt.setDate(expiresAt.getDate() + input.days);
+      } else {
+        expiresAt = undefined;
       }
       return db.updateUserPlan(input.userId, input.plan, expiresAt);
     }),

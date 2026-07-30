@@ -12,6 +12,7 @@ import {
   users,
   type Category,
   type GeneratedSheet,
+  type InsertPlan,
   type InsertUser,
   type Plan,
   type SiteSetting,
@@ -123,7 +124,7 @@ export async function getAllUsers() {
     .orderBy(desc(users.createdAt));
 }
 
-export async function updateUserPlan(userId: number, plan: "free" | "pro" | "elite", planExpiresAt?: Date) {
+export async function updateUserPlan(userId: number, plan: string, planExpiresAt?: Date) {
   const db = await getDb();
   if (!db) return;
 
@@ -139,8 +140,11 @@ export async function updateUserPlan(userId: number, plan: "free" | "pro" | "eli
   // Só definir planExpiresAt se foi fornecido (pode ser null para downgrade)
   if (planExpiresAt !== undefined) {
     updateData.planExpiresAt = planExpiresAt;
-  } else if (plan === "free") {
-    updateData.planExpiresAt = null;
+  } else {
+    // Verificar se o plano é gratuito (price 0)
+    if (planInfo && parseFloat(planInfo.priceMonthly || "0") <= 0) {
+      updateData.planExpiresAt = null;
+    }
   }
 
   await db.update(users).set(updateData).where(eq(users.id, userId));
@@ -150,14 +154,18 @@ export async function downgradeExpiredPlans() {
   const db = await getDb();
   if (!db) return;
   
-  // Update users whose plan is not 'free' and their expiration date has passed
+  // Update users whose plan is paid and their expiration date has passed
   const now = new Date();
-  await db.update(users).set({ plan: "free", planExpiresAt: null, updatedAt: now }).where(
-    and(eq(users.plan, "pro"), lt(users.planExpiresAt, now))
-  );
-  await db.update(users).set({ plan: "free", planExpiresAt: null, updatedAt: now }).where(
-    and(eq(users.plan, "elite"), lt(users.planExpiresAt, now))
-  );
+  // Buscar planos pagos (price > 0) para fazer downgrade
+  const paidPlans = await db.select({ code: plans.code }).from(plans)
+    .where(and(eq(plans.isActive, true), sql`CAST(plans."priceMonthly" AS NUMERIC) > 0`));
+  const paidCodes = paidPlans.map(p => p.code);
+  
+  if (paidCodes.length > 0) {
+    await db.update(users).set({ plan: "free", planExpiresAt: null, updatedAt: now }).where(
+      and(inArray(users.plan, paidCodes as [string, ...string[]]), lt(users.planExpiresAt, now))
+    );
+  }
 }
 
 export async function updateUserSuspended(userId: number, suspended: boolean) {
@@ -318,31 +326,33 @@ export async function getAllGeneratedSheets(): Promise<GeneratedSheet[]> {
 }
 
 // ==================== Plans ====================
-
-export async function getPlanByCode(code: "free" | "pro" | "elite"): Promise<Plan | undefined> {
+export async function getPlanByCode(code: string): Promise<Plan | undefined> {
   const db = await getDb();
   if (!db) return undefined;
   const result = await db.select().from(plans).where(eq(plans.code, code)).limit(1);
   return result[0];
 }
-
 export async function getAllPlans(): Promise<Plan[]> {
   const db = await getDb();
   if (!db) return [];
-  const allPlans = await db.select().from(plans).where(eq(plans.isActive, true)).orderBy(plans.displayOrder);
-  // Deduplicar por código para evitar planos repetidos caso haja inserções duplicadas no banco
-  const seen = new Set<string>();
-  return allPlans.filter((plan) => {
-    if (seen.has(plan.code)) return false;
-    seen.add(plan.code);
-    return true;
-  });
+  const allPlans = await db.select().from(plans).orderBy(plans.displayOrder);
+  return allPlans;
 }
-
-export async function updatePlan(code: "free" | "pro" | "elite", data: Partial<Omit<Plan, "id" | "code" | "createdAt">>) {
+export async function updatePlan(id: number, data: Partial<Omit<Plan, "id" | "createdAt">>) {
   const db = await getDb();
   if (!db) return;
-  await db.update(plans).set({ ...data, updatedAt: new Date() }).where(eq(plans.code, code));
+  await db.update(plans).set({ ...data, updatedAt: new Date() }).where(eq(plans.id, id));
+}
+export async function createPlan(data: Omit<InsertPlan, "id" | "createdAt" | "updatedAt">): Promise<Plan | undefined> {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db.insert(plans).values({ ...data, createdAt: new Date(), updatedAt: new Date() }).returning();
+  return result[0];
+}
+export async function deletePlan(id: number) {
+  const db = await getDb();
+  if (!db) return;
+  await db.delete(plans).where(eq(plans.id, id));
 }
 
 // ==================== Site Settings ====================

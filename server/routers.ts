@@ -34,7 +34,7 @@ export const appRouter = router({
   // ==================== Templates ====================
   templates: router({
     list: publicProcedure.input(
-      z.object({ categoryId: z.number().optional(), plan: z.enum(["free", "pro", "elite"]).optional() }).optional()
+      z.object({ categoryId: z.number().optional(), plan: z.string().optional() }).optional()
     ).query(async ({ input }) => {
       let templates = await db.getAllTemplates();
       if (input?.categoryId) {
@@ -78,12 +78,16 @@ export const appRouter = router({
   dashboard: router({
     overview: protectedProcedure.query(async ({ ctx }) => {
       const user = ctx.user;
-      const plan = await db.getPlanByCode(user.plan as "free" | "pro" | "elite");
+      const plan = await db.getPlanByCode(user.plan as string);
       const recentSheets = await db.getGeneratedSheetsByUser(user.id);
       const templates = await db.getAllTemplates();
-      const planOrder = { free: 0, pro: 1, elite: 2 } as const;
+      const allPlans = await db.getAllPlans();
+      const userPlanDisplayOrder = plan?.displayOrder ?? 0;
       const availableTemplates = templates
-        .filter((template) => planOrder[user.plan as "free" | "pro" | "elite"] >= planOrder[template.plan as "free" | "pro" | "elite"])
+        .filter((template) => {
+          const tplPlan = allPlans.find(p => p.code === (template.plan as string));
+          return userPlanDisplayOrder >= (tplPlan?.displayOrder ?? 0);
+        })
         .slice(0, plan?.maxTemplates ?? 0);
       const startOfMonth = new Date();
       startOfMonth.setDate(1);
@@ -133,13 +137,13 @@ export const appRouter = router({
       if (user.suspended) {
         throw new Error("Conta suspensa. Entre em contato com o suporte.");
       }
-      const userPlan = user.plan as "free" | "pro" | "elite";
+      const userPlan = user.plan as string;
       const plan = await db.getPlanByCode(userPlan);
       if (!plan) {
         throw new Error("Nao foi possivel localizar as permissoes do seu plano.");
       }
       if (plan.maxAiUses === 0) {
-        throw new Error("Seu plano nao inclui acesso a geracoes com IA. Faca upgrade para o plano Pro ou Elite!");
+        throw new Error("Seu plano nao inclui acesso a geracoes com IA. Faca upgrade para um plano superior!");
       }
       if (plan.maxAiUses > 0 && user.aiUsesLeft <= 0) {
         throw new Error("Voce atingiu o limite de geracoes com IA do seu plano. Faca upgrade ou aguarde o proximo mes!");
@@ -198,10 +202,11 @@ export const appRouter = router({
       }
 
       // Check plan access and the configured catalog allowance.
-      const userPlan = user.plan as "free" | "pro" | "elite";
-      const templatePlan = template.plan as "free" | "pro" | "elite";
-      const planOrder = { free: 0, pro: 1, elite: 2 } as const;
-      if (planOrder[userPlan] < planOrder[templatePlan]) {
+      const userPlan = user.plan as string;
+      const templatePlan = template.plan as string;
+      const userPlanInfo = await db.getPlanByCode(userPlan);
+      const templatePlanInfo = await db.getPlanByCode(templatePlan);
+      if ((userPlanInfo?.displayOrder ?? 0) < (templatePlanInfo?.displayOrder ?? 0)) {
         throw new Error("Seu plano não permite acesso a este modelo. Faça upgrade!");
       }
 
@@ -211,7 +216,10 @@ export const appRouter = router({
       }
 
       const allowedTemplates = (await db.getAllTemplates())
-        .filter((item) => planOrder[userPlan] >= planOrder[item.plan as "free" | "pro" | "elite"])
+        .filter((item) => {
+          const itemPlanInfo = await db.getPlanByCode(item.plan as string);
+          return (userPlanInfo?.displayOrder ?? 0) >= (itemPlanInfo?.displayOrder ?? 0);
+        })
         .slice(0, plan.maxTemplates);
       if (!allowedTemplates.some((item) => item.id === template.id)) {
         throw new Error("Este modelo não está incluído no limite atual do seu plano. Faça upgrade para liberá-lo.");
