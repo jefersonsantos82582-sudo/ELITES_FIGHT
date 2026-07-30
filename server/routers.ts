@@ -4,7 +4,7 @@ import { systemRouter } from "./_core/systemRouter";
 import { publicProcedure, protectedProcedure, adminProcedure, router } from "./_core/trpc";
 import { z } from "zod";
 import { storagePut } from "./storage";
-import { generateSpreadsheet, type ColumnDef } from "./services/sheetGenerator";
+import { generateSpreadsheet, stripDescriptionColumn, type ColumnDef } from "./services/sheetGenerator";
 import { generateSheetWithAI } from "./services/aiSheetGenerator";
 import * as db from "./db";
 import { paymentRouter } from "./routers/payment";
@@ -229,12 +229,20 @@ export const appRouter = router({
         }
       }
 
+      // Geração normal (não-IA): remove qualquer coluna de "Descrição" do
+      // modelo, já que esse fluxo usa estrutura fixa e não deve trazer campo
+      // de descrição livre — diferente do gerador com IA.
+      const { columns: normalColumns, sampleRows: normalSampleRows } = stripDescriptionColumn(
+        template.columns as ColumnDef[],
+        template.sampleRows as unknown[][] | undefined
+      );
+
       // Generate the spreadsheet
       const buffer = await generateSpreadsheet({
         templateName: template.name,
         customName: input.customName,
-        columns: template.columns as ColumnDef[],
-        sampleRows: template.sampleRows as unknown[][] | undefined,
+        columns: normalColumns,
+        sampleRows: normalSampleRows,
         headerColor: input.headerColor || template.headerColor || "#D4AF37",
         accentColor: input.accentColor || template.accentColor || "#1A1A1A",
         hasWatermark: plan?.hasWatermark ?? true,

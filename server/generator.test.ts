@@ -67,6 +67,7 @@ vi.mock("./storage", () => ({
 // Mock sheetGenerator
 vi.mock("./services/sheetGenerator", () => ({
   generateSpreadsheet: vi.fn().mockResolvedValue(Buffer.from("fake-xlsx")),
+  stripDescriptionColumn: vi.fn((columns: unknown[], sampleRows?: unknown[][]) => ({ columns, sampleRows })),
 }));
 
 function createAuthContext(): { ctx: TrpcContext } {
