@@ -122,6 +122,37 @@ export const coupons = pgTable("coupons", {
 });
 
 /**
+ * Page views tracking for analytics.
+ */
+export const pageViews = pgTable("pageViews", {
+  id: serial("id").primaryKey(),
+  page: varchar("page", { length: 255 }).notNull(),
+  userId: integer("userId"),
+  sessionId: varchar("sessionId", { length: 100 }),
+  userAgent: text("userAgent"),
+  referer: text("referer"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+/**
+ * Payment transactions from Mercado Pago.
+ */
+export const payments = pgTable("payments", {
+  id: serial("id").primaryKey(),
+  userId: integer("userId").notNull(),
+  mpPaymentId: varchar("mpPaymentId", { length: 100 }).notNull().unique(),
+  planCode: varchar("planCode", { length: 60 }).notNull(),
+  amount: varchar("amount", { length: 20 }).notNull(),
+  status: varchar("status", { length: 50 }).notNull(), // approved, pending, rejected, cancelled
+  paymentMethod: varchar("paymentMethod", { length: 50 }),
+  payerEmail: varchar("payerEmail", { length: 320 }),
+  payerName: text("payerName"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  approvedAt: timestamp("approvedAt"),
+  updatedAt: timestamp("updatedAt").defaultNow().notNull(),
+});
+
+/**
  * Broadcast announcements sent to users.
  */
 export const announcements = pgTable("announcements", {
@@ -139,3 +170,7 @@ export type Template = typeof templates.$inferSelect;
 export type GeneratedSheet = typeof generatedSheets.$inferSelect;
 export type Plan = typeof plans.$inferSelect;
 export type SiteSetting = typeof siteSettings.$inferSelect;
+export type PageView = typeof pageViews.$inferSelect;
+export type InsertPageView = typeof pageViews.$inferInsert;
+export type Payment = typeof payments.$inferSelect;
+export type InsertPayment = typeof payments.$inferInsert;

@@ -6,14 +6,20 @@ import {
   categories,
   coupons,
   generatedSheets,
+  pageViews,
+  payments,
   plans,
   siteSettings,
   templates,
   users,
   type Category,
   type GeneratedSheet,
+  type InsertPageView,
+  type InsertPayment,
   type InsertPlan,
   type InsertUser,
+  type PageView,
+  type Payment,
   type Plan,
   type SiteSetting,
   type Template,
@@ -458,4 +464,124 @@ export async function createAnnouncement(data: Omit<typeof announcements.$inferI
   if (!db) return undefined;
   const result = await db.insert(announcements).values({ ...data, createdAt: new Date() }).returning();
   return result[0];
+}
+
+
+// ==================== Page Views ====================
+
+export async function trackPageView(data: InsertPageView): Promise<PageView | undefined> {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db.insert(pageViews).values(data).returning();
+  return result[0];
+}
+
+export async function getPageViewsCount(page?: string, since?: Date): Promise<number> {
+  const db = await getDb();
+  if (!db) return 0;
+  
+  const conditions: any[] = [];
+  if (page) conditions.push(eq(pageViews.page, page));
+  if (since) conditions.push(gte(pageViews.createdAt, since));
+  
+  const result = await db
+    .select({ count: sql<number>`cast(count(*) as integer)` })
+    .from(pageViews)
+    .where(conditions.length > 0 ? and(...conditions) : undefined);
+  
+  return result[0]?.count || 0;
+}
+
+export async function getPageViewsByPage(): Promise<{ page: string; count: number }[]> {
+  const db = await getDb();
+  if (!db) return [];
+  
+  const result = await db
+    .select({
+      page: pageViews.page,
+      count: sql<number>`cast(count(*) as integer)`,
+    })
+    .from(pageViews)
+    .groupBy(pageViews.page)
+    .orderBy(sql`count(*) DESC`);
+  
+  return result;
+}
+
+// ==================== Payments ====================
+
+export async function recordPayment(data: InsertPayment): Promise<Payment | undefined> {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db.insert(payments).values(data).returning();
+  return result[0];
+}
+
+export async function getPaymentByMpId(mpPaymentId: string): Promise<Payment | undefined> {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db.select().from(payments).where(eq(payments.mpPaymentId, mpPaymentId)).limit(1);
+  return result[0];
+}
+
+export async function updatePaymentStatus(mpPaymentId: string, status: string, approvedAt?: Date): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  await db
+    .update(payments)
+    .set({ status, approvedAt, updatedAt: new Date() })
+    .where(eq(payments.mpPaymentId, mpPaymentId));
+}
+
+export async function getApprovedPaymentsCount(since?: Date): Promise<number> {
+  const db = await getDb();
+  if (!db) return 0;
+  
+  const conditions = [eq(payments.status, "approved")];
+  if (since) conditions.push(gte(payments.approvedAt, since));
+  
+  const result = await db
+    .select({ count: sql<number>`cast(count(*) as integer)` })
+    .from(payments)
+    .where(and(...conditions));
+  
+  return result[0]?.count || 0;
+}
+
+export async function getTotalApprovedPaymentsAmount(since?: Date): Promise<string> {
+  const db = await getDb();
+  if (!db) return "0";
+  
+  const conditions = [eq(payments.status, "approved")];
+  if (since) conditions.push(gte(payments.approvedAt, since));
+  
+  const result = await db
+    .select({ total: sql<string>`coalesce(sum(cast(amount as numeric)), 0)` })
+    .from(payments)
+    .where(and(...conditions));
+  
+  return result[0]?.total || "0";
+}
+
+export async function getPaymentsByPlan(): Promise<{ planCode: string; count: number; total: string }[]> {
+  const db = await getDb();
+  if (!db) return [];
+  
+  const result = await db
+    .select({
+      planCode: payments.planCode,
+      count: sql<number>`cast(count(*) as integer)`,
+      total: sql<string>`coalesce(sum(cast(amount as numeric)), 0)`,
+    })
+    .from(payments)
+    .where(eq(payments.status, "approved"))
+    .groupBy(payments.planCode);
+  
+  return result;
+}
+
+export async function getAllPayments(): Promise<Payment[]> {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(payments).orderBy(desc(payments.createdAt));
 }
