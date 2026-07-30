@@ -39,15 +39,14 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     }
   };
 
-  // Mostrar skeleton apenas se o Firebase ainda não sabe quem é o usuário.
-  // Se o Firebase já sabe (fbUser), deixamos o DashboardLayout carregar e ele mostrará
-  // seus próprios estados de carregamento para os dados do servidor (tRPC).
-  if (loading && !fbUser) {
+  // Mostrar skeleton se estiver carregando ou sincronizando, mas apenas se não tivermos fbUser ainda
+  if ((loading || isSyncing) && !fbUser) {
     return <DashboardLayoutSkeleton />;
   }
 
-  // Se não temos usuário nem no Firebase nem no Servidor, aí sim pedimos login
-  if (!user && !fbUser && !loading) {
+  // Se não temos usuário nem no Firebase nem no Servidor, e não estamos carregando, aí sim pedimos login
+  // Importante: se temos fbUser, não mostramos a tela de login, mesmo que o 'user' (DB) ainda não esteja pronto
+  if (!user && !fbUser && !loading && !isSyncing) {
     return (
       <main className="flex min-h-screen items-center justify-center bg-background px-4">
         <section className="flex w-full max-w-md flex-col items-center gap-8 rounded-2xl border border-border/30 bg-card/40 p-8 text-center shadow-xl animate-in fade-in zoom-in duration-500">

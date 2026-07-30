@@ -13,6 +13,7 @@ import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import MercadoPagoCheckout from "@/components/MercadoPagoCheckout";
 import DashboardLayout from "@/components/DashboardLayout";
+import { toast } from "sonner";
 
 export default function Checkout() {
   const { user, fbUser, isSyncing, loading: authLoading } = useAuth();
@@ -32,7 +33,11 @@ export default function Checkout() {
 
   const { data: planInfo } = trpc.payment.getPlanInfo.useQuery(
     { planCode: planCode || "pro" },
-    { enabled: Boolean(planCode), retry: 1, staleTime: 300000 }
+    { 
+      enabled: Boolean(planCode), 
+      staleTime: 10 * 60 * 1000, // 10 minutos de cache para planos
+      refetchOnMount: false 
+    }
   );
 
   const createPreferenceMutation = trpc.payment.createUpgradePreference.useMutation();
@@ -110,17 +115,36 @@ export default function Checkout() {
       return;
     }
 
-    if (!user) {
-      // Se não tem user e não está carregando, não tentar
-      if (!authLoading && !isSyncing) {
-        return;
-      }
+    // Só iniciamos a criação da preferência quando:
+    // 1. Não estamos mais em fase de carregamento inicial (authLoading)
+    // 2. Não estamos sincronizando com o banco de dados (isSyncing)
+    // 3. Temos o objeto 'user' do banco de dados pronto
+    if (authLoading || isSyncing || !user) {
       return;
     }
 
-    // Usuário autenticado, criar preferência (apenas na primeira vez)
-    createPreference();
-  }, [planCode, user?.id, setLocation, authLoading, isSyncing]);
+    // Usuário autenticado e sincronizado, criar preferência (apenas na primeira vez)
+    if (!preferenceId && !isLoading && !error) {
+      createPreference();
+    }
+  }, [planCode, user?.id, setLocation, authLoading, isSyncing, preferenceId, isLoading, error, createPreference]);
+
+  // Polling para verificar se o pagamento foi aprovado enquanto o usuário está na página
+  const { data: paymentStatus } = trpc.payment.checkStatus.useQuery(
+    { preferenceId: preferenceId || "" },
+    { 
+      enabled: !!preferenceId && !error,
+      refetchInterval: (query) => (query.state.data?.status === "approved" ? false : 3000), // Verifica a cada 3s
+    }
+  );
+
+  useEffect(() => {
+    if (paymentStatus?.status === "approved") {
+      toast.success("Pagamento confirmado! Seu plano foi atualizado.");
+      utils.auth.me.invalidate(); // Atualiza os dados do usuário globalmente
+      setTimeout(() => setLocation("/checkout/success"), 1500);
+    }
+  }, [paymentStatus, setLocation]);
 
   // Cleanup timeout ao desmontar
   useEffect(() => {

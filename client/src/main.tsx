@@ -15,8 +15,8 @@ const queryClient = new QueryClient({
         if (error?.message === UNAUTHED_ERR_MSG) return false;
         return failureCount < 3;
       },
-      gcTime: 5 * 60 * 1000, // garbage collect após 5 min
-      staleTime: 30000, // cache válido 30s
+      gcTime: 30 * 60 * 1000, // Manter em cache por 30 min
+      staleTime: 5 * 60 * 1000, // Considerar dados "frescos" por 5 min (evita loading ao trocar abas)
     },
     mutations: {
       retry: false, // mutações não repetem automaticamente
@@ -64,11 +64,11 @@ const trpcClient = trpc.createClient({
         try {
           const user = auth.currentUser;
           if (user) {
-            // TIMEOUT: getIdToken com timeout de 5s para não travar
+            // Forçar renovação do token (true) para evitar expiração
             const token = await Promise.race([
-              user.getIdToken(),
+              user.getIdToken(true),
               new Promise<never>((_, reject) =>
-                setTimeout(() => reject(new Error("Token timeout")), 5000)
+                setTimeout(() => reject(new Error("Token timeout")), 8000)
               ),
             ]);
             localStorage.setItem("firebase-token", token);
@@ -76,7 +76,6 @@ const trpcClient = trpc.createClient({
             return { Authorization: `Bearer ${token}` };
           }
 
-          // Fallback: token salvo no localStorage
           const fbToken = localStorage.getItem("firebase-token");
           if (fbToken) {
             return { Authorization: `Bearer ${fbToken}` };

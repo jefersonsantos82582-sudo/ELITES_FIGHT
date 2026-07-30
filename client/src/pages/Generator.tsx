@@ -10,7 +10,6 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { trpc } from "@/lib/trpc";
 import { useAuth } from "@/_core/hooks/useAuth";
@@ -18,24 +17,21 @@ import { toast } from "sonner";
 
 export default function Generator() {
   const { user, loading: authLoading, fbUser, isSyncing, login } = useAuth();
+  // Usamos staleTime infinito aqui porque o prefetching já garantiu os dados
+  // Isso remove qualquer delay de "loading" ao entrar na página
   const utils = trpc.useUtils();
   const { data: overview } = trpc.dashboard.overview.useQuery(undefined, {
     enabled: Boolean(user),
-    retry: 1,
-    refetchOnWindowFocus: false,
-    staleTime: 30000,
+    staleTime: 5 * 60 * 1000,
   });
   const { data: categories } = trpc.categories.list.useQuery(undefined, {
-    retry: 1,
-    staleTime: 60000,
+    staleTime: 5 * 60 * 1000,
   });
   const { data: templates } = trpc.templates.list.useQuery(undefined, {
-    retry: 1,
-    staleTime: 60000,
+    staleTime: 5 * 60 * 1000,
   });
   const { data: settings } = trpc.settings.getAll.useQuery(undefined, {
-    retry: 1,
-    staleTime: 60000,
+    staleTime: 5 * 60 * 1000,
   });
 
   const [location] = useLocation();
@@ -47,7 +43,6 @@ export default function Generator() {
   const [customName, setCustomName] = useState("");
   const [headerColor, setHeaderColor] = useState("#D4AF37");
   const [accentColor, setAccentColor] = useState("#1A1A1A");
-  const [extraInfo, setExtraInfo] = useState("");
   const [generated, setGenerated] = useState<{ fileUrl: string; fileName: string } | null>(null);
   const [authRetryCount, setAuthRetryCount] = useState(0);
 
@@ -125,7 +120,6 @@ export default function Generator() {
       customName,
       headerColor,
       accentColor,
-      extraInfo: extraInfo || undefined,
     });
   };
 
@@ -344,18 +338,6 @@ export default function Generator() {
                       <Input value={accentColor} onChange={e => setAccentColor(e.target.value)} className="flex-1" />
                     </div>
                   </div>
-                </div>
-
-                <div>
-                  <Label htmlFor="extraInfo">Informações extras (opcional)</Label>
-                  <Textarea
-                    id="extraInfo"
-                    value={extraInfo}
-                    onChange={e => setExtraInfo(e.target.value)}
-                    placeholder="Adicione notas, descrições ou instruções..."
-                    className="mt-1.5"
-                    rows={3}
-                  />
                 </div>
               </div>
             </Card>

@@ -134,12 +134,16 @@ Gere pelo menos 5 linhas de exemplo realistas com dados variados.`,
  * Função para chamar o Google Gemini diretamente via API do Google AI Studio.
  *
  * Observação importante: o modelo "gemini-1.5-flash" foi descontinuado pelo Google
- * e é redirecionado internamente para "gemini-2.5-flash", que usa "thinking" por
- * padrão. Os tokens de raciocínio (thinking) são contabilizados dentro de
- * maxOutputTokens, então um limite baixo (ex: 2000) fazia o modelo gastar tudo
- * "pensando" e não sobrar texto para a resposta final — por isso a regex não
- * encontrava o JSON. A correção: usar o modelo 2.5 explicitamente, desligar o
- * thinking (thinkingBudget: 0) e aumentar a folga de tokens de saída.
+ * e depois "gemini-2.5-flash" também deixou de estar disponível para novas
+ * contas/chaves ("This model models/gemini-2.5-flash is no longer available to
+ * new users"). Por isso usamos o alias "gemini-flash-latest", que a própria
+ * Google atualiza automaticamente para o modelo Flash estável mais recente
+ * (hoje gemini-3.6-flash), evitando que a chave quebre de novo a cada
+ * descontinuação. Os tokens de raciocínio (thinking) são contabilizados dentro
+ * de maxOutputTokens, então um limite baixo (ex: 2000) fazia o modelo gastar
+ * tudo "pensando" e não sobrar texto para a resposta final — por isso a regex
+ * não encontrava o JSON. A correção: desligar o thinking (thinkingBudget: 0) e
+ * aumentar a folga de tokens de saída.
  */
 // Schema estrito: obriga o Gemini a devolver JSON já no formato esperado,
 // em vez de confiar que ele "escreva" um JSON válido sozinho (isso evitava
@@ -170,50 +174,206 @@ const SHEET_RESPONSE_SCHEMA = {
   required: ["columns", "sampleRows"],
 };
 
+// Ordem de tentativa dos modelos: primeiro o alias "latest" (sempre válido,
+// a Google troca o modelo por trás dele sozinha), depois modelos fixos como
+// rede de segurança caso o alias tenha algum problema pontual.
+const GEMINI_MODEL_FALLBACKS = [
+  "gemini-flash-latest",
+  "gemini-3.6-flash",
+  "gemini-2.5-flash",
+];
+
+// A partir da série Gemini 3 o parâmetro para controlar o "thinking" mudou de
+// thinkingConfig.thinkingBudget (número de tokens, aceitava 0 = desligado)
+// para thinkingConfig.thinkingLevel ("minimal" | "low" | "medium" | "high").
+// Mandar thinkingBudget para um modelo 3.x (ou vice-versa) resulta em erro
+// 400 "Request contains an invalid argument" — por isso o config precisa ser
+// montado por modelo, e não fixo.
+function isGemini3Model(model: string): boolean {
+  return /gemini-3|gemini-flash-latest|gemini-pro-latest/.test(model);
+}
+
+function getThinkingConfig(model: string): Record<string, unknown> {
+  return isGemini3Model(model)
+    ? { thinkingLevel: "minimal" }
+    : { thinkingBudget: 0 };
+}
+
 async function callGemini(prompt: string): Promise<string> {
   if (!ENV.geminiApiKey) {
     throw new Error("GEMINI_API_KEY não configurada no Render.");
   }
 
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${ENV.geminiApiKey}`;
+  let lastError: Error | null = null;
 
-  const response = await axios.post(url, {
-    contents: [
-      {
-        parts: [
-          { text: prompt }
-        ]
+  for (const model of GEMINI_MODEL_FALLBACKS) {
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${ENV.geminiApiKey}`;
+
+    const body = {
+      contents: [
+        {
+          parts: [
+            { text: prompt }
+          ]
+        }
+      ],
+      generationConfig: {
+        temperature: 0.7,
+        // Modelos "3.x" continuam gastando tokens de thinking mesmo em nível
+        // mínimo, então damos mais folga de saída para não estourar o limite
+        // antes do JSON final ser escrito.
+        maxOutputTokens: isGemini3Model(model) ? 16000 : 8192,
+        responseMimeType: "application/json",
+        responseSchema: SHEET_RESPONSE_SCHEMA,
+        thinkingConfig: getThinkingConfig(model),
       }
-    ],
-    generationConfig: {
-      temperature: 0.7,
-      maxOutputTokens: 8192,
-      responseMimeType: "application/json",
-      responseSchema: SHEET_RESPONSE_SCHEMA,
-      thinkingConfig: {
-        thinkingBudget: 0,
-      },
+    };
+
+    let response;
+    try {
+      response = await axios.post(url, body);
+    } catch (err) {
+      // O axios só devolve "Request failed with status code XXX" por padrão,
+      // escondendo o motivo real que o Google manda no corpo do erro (modelo
+      // não encontrado/descontinuado, parâmetro incompatível com a versão do
+      // modelo, sem billing habilitado, quota excedida, etc).
+      if (axios.isAxiosError(err)) {
+        const status = err.response?.status;
+        const googleMessage = err.response?.data?.error?.message || JSON.stringify(err.response?.data)?.slice(0, 500);
+        console.error(`[AI Sheet Generator] Erro HTTP do Gemini (modelo ${model}):`, status, googleMessage);
+        lastError = new Error(`Gemini retornou erro ${status ?? ""}: ${googleMessage || err.message}`);
+        // Modelo não encontrado/descontinuado (404), não disponível para essa
+        // chave (403) ou requisição rejeitada (400, ex: parâmetro incompatível)
+        // — tenta o próximo modelo da lista em vez de falhar direto.
+        if (status === 404 || status === 403 || status === 400) {
+          continue;
+        }
+        throw lastError;
+      }
+      throw err;
     }
-  });
 
-  const candidate = response.data?.candidates?.[0];
-  const content = candidate?.content?.parts?.[0]?.text;
+    const candidate = response.data?.candidates?.[0];
+    const content = candidate?.content?.parts?.[0]?.text;
 
-  if (!content) {
-    const finishReason = candidate?.finishReason;
-    console.error(
-      "[AI Sheet Generator] Resposta vazia do Gemini. finishReason:",
-      finishReason,
-      "payload:",
-      JSON.stringify(response.data).slice(0, 1000)
-    );
-    throw new Error(
-      finishReason === "MAX_TOKENS"
-        ? "Resposta vazia do Gemini: limite de tokens atingido antes de gerar a resposta final."
-        : "Resposta vazia do Gemini"
-    );
+    if (!content) {
+      const finishReason = candidate?.finishReason;
+      console.error(
+        `[AI Sheet Generator] Resposta vazia do Gemini (modelo ${model}). finishReason:`,
+        finishReason,
+        "payload:",
+        JSON.stringify(response.data).slice(0, 1000)
+      );
+      lastError = new Error(
+        finishReason === "MAX_TOKENS"
+          ? "Resposta vazia do Gemini: limite de tokens atingido antes de gerar a resposta final."
+          : "Resposta vazia do Gemini"
+      );
+      continue;
+    }
+    return content;
   }
-  return content;
+
+  throw lastError ?? new Error("Nenhum modelo Gemini disponível respondeu.");
+}
+
+/**
+ * Tenta fazer parse de um JSON que pode vir com pequenos problemas de sintaxe
+ * (vírgula sobrando, ou resposta cortada no meio de um array/objeto porque o
+ * modelo estourou o limite de tokens). Em vez de falhar direto, tenta reparar:
+ * 1) remove vírgulas soltas antes de "]"/"}"
+ * 2) se ainda assim não for válido, corta a string no último elemento completo
+ *    e fecha os colchetes/chaves pendentes.
+ */
+function parseJsonWithRepair(raw: string): unknown {
+  try {
+    return JSON.parse(raw);
+  } catch {
+    // ignora e tenta reparar
+  }
+
+  const withoutTrailingCommas = raw.replace(/,\s*([\]}])/g, "$1");
+  try {
+    return JSON.parse(withoutTrailingCommas);
+  } catch {
+    // ignora e tenta reparar por truncamento
+  }
+
+  const repaired = closeTruncatedJson(withoutTrailingCommas);
+  return JSON.parse(repaired);
+}
+
+function closeTruncatedJson(str: string): string {
+  let inString = false;
+  let escape = false;
+  let lastSafeIndex = -1;
+  const stack: string[] = [];
+
+  for (let i = 0; i < str.length; i++) {
+    const ch = str[i];
+    if (inString) {
+      if (escape) {
+        escape = false;
+      } else if (ch === "\\") {
+        escape = true;
+      } else if (ch === '"') {
+        inString = false;
+      }
+      continue;
+    }
+    if (ch === '"') {
+      inString = true;
+      continue;
+    }
+    if (ch === "{" || ch === "[") {
+      stack.push(ch);
+    } else if (ch === "}" || ch === "]") {
+      stack.pop();
+    }
+    if (ch === "," || ch === "}" || ch === "]") {
+      lastSafeIndex = i;
+    }
+  }
+
+  if (lastSafeIndex === -1) {
+    return str;
+  }
+
+  let truncated = str.slice(0, lastSafeIndex + 1).replace(/,\s*$/, "");
+
+  // Recalcula quais colchetes/chaves ainda estão abertos até o ponto de corte
+  const remainingStack: string[] = [];
+  let inStr2 = false;
+  let esc2 = false;
+  for (let i = 0; i < truncated.length; i++) {
+    const ch = truncated[i];
+    if (inStr2) {
+      if (esc2) {
+        esc2 = false;
+      } else if (ch === "\\") {
+        esc2 = true;
+      } else if (ch === '"') {
+        inStr2 = false;
+      }
+      continue;
+    }
+    if (ch === '"') {
+      inStr2 = true;
+      continue;
+    }
+    if (ch === "{" || ch === "[") {
+      remainingStack.push(ch);
+    } else if (ch === "}" || ch === "]") {
+      remainingStack.pop();
+    }
+  }
+
+  const closing = remainingStack
+    .reverse()
+    .map((c) => (c === "{" ? "}" : "]"))
+    .join("");
+
+  return truncated + closing;
 }
 
 /**

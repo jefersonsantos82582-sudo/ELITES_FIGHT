@@ -8,9 +8,9 @@ import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   LayoutDashboard, Users, FileSpreadsheet, Settings,
-  ShieldAlert, Loader2, AlertCircle, RefreshCw, Key,
+  ShieldAlert, Loader2, AlertCircle, RefreshCw, Key, Mail,
   Crown, Dice1, Trophy, UserCheck, UserX, Ban, Eye,
-  ArrowUpRight, ArrowDownRight, Sparkles, Gift, Zap,
+  ArrowUpRight, ArrowDownRight, Sparkles, Gift, Zap, DollarSign, Save,
   FolderKanban, Palette, Plus, Pencil, Trash2, X
 } from "lucide-react";
 import DashboardLayout from "@/components/DashboardLayout";
@@ -30,7 +30,7 @@ interface ThemeUI {
   name: string;
   header: string;
   accent: string;
-  plan: "free" | "pro" | "elite";
+  plan: string;
 }
 
 const emptyTemplateForm = {
@@ -38,7 +38,7 @@ const emptyTemplateForm = {
   name: "",
   slug: "",
   categoryId: "",
-  plan: "free" as "free" | "pro" | "elite",
+  plan: "free" as string,
   description: "",
   headerColor: "#D4AF37",
   accentColor: "#1A1A1A",
@@ -89,12 +89,26 @@ export default function Admin() {
   const [authError, setAuthError] = useState<string | null>(null);
   const [loggingIn, setLoggingIn] = useState(false);
 
+  // Edição de plano/preço
+  const [editingPlanCode, setEditingPlanCode] = useState<string | null>(null);
+  const [planForm, setPlanForm] = useState<{ priceMonthly: string; priceYearly: string; maxAiUses: number; maxTemplates: number; description: string }>({
+    priceMonthly: "", priceYearly: "", maxAiUses: 0, maxTemplates: 0, description: "",
+  });
+
   // Gestão de administradores
   const [newAdminEmail, setNewAdminEmail] = useState("");
 
+  // Criar plano
+  const [showCreatePlanDialog, setShowCreatePlanDialog] = useState(false);
+  const [createPlanForm, setCreatePlanForm] = useState({
+    code: "", name: "", priceMonthly: "0", priceYearly: "0",
+    description: "", maxTemplates: 5, maxThemes: 5, maxAiUses: 0,
+    unlimitedSheets: false, hasWatermark: true, customLogo: false, displayOrder: 0,
+  });
+
   // Modal de upgrade manual
   const [upgradeUserId, setUpgradeUserId] = useState<number | null>(null);
-  const [upgradePlan, setUpgradePlan] = useState<"free" | "pro" | "elite">("pro");
+  const [upgradePlan, setUpgradePlan] = useState<string>("pro");
   const [showUpgradeDialog, setShowUpgradeDialog] = useState(false);
 
   // Categorias
@@ -121,7 +135,7 @@ export default function Admin() {
 
   // Modal de sorteio
   const [showDrawDialog, setShowDrawDialog] = useState(false);
-  const [drawPlan, setDrawPlan] = useState<"pro" | "elite">("pro");
+  const [drawPlan, setDrawPlan] = useState<string>("pro");
   const [drawResult, setDrawResult] = useState<UserInfo | null>(null);
   const [drawWinners, setDrawWinners] = useState<UserInfo[]>([]);
 
@@ -175,7 +189,7 @@ export default function Admin() {
       return;
     }
     if (!adminPass) {
-      setAuthError("Digite a chave de acesso");
+      setAuthError("Digite a senha de acesso");
       return;
     }
 
@@ -187,6 +201,57 @@ export default function Admin() {
   const statsQuery = trpc.admin.stats.useQuery(undefined, {
     enabled: isAuthorized,
     retry: false,
+  });
+
+  useEffect(() => {
+    const err = statsQuery.error;
+    if (err && (err.message.includes("FORBIDDEN") || err.message.includes("UNAUTHORIZED"))) {
+      setIsAuthorized(false);
+      setAuthError("Sessão de administrador inválida ou expirada. Faça login novamente.");
+    }
+  }, [statsQuery.error]);
+
+  const plansQuery = trpc.plans.list.useQuery(undefined, {
+    enabled: isAuthorized,
+    retry: false,
+  });
+
+  const updatePlanMutation = trpc.admin.updatePlan.useMutation({
+    onSuccess: () => {
+      toast.success("Plano atualizado com sucesso!");
+      plansQuery.refetch();
+      statsQuery.refetch();
+      setEditingPlanCode(null);
+    },
+    onError: (err) => {
+      toast.error(`Erro ao atualizar plano: ${err.message}`);
+    }
+  });
+  const createPlanMutation = trpc.admin.createPlan.useMutation({
+    onSuccess: () => {
+      toast.success("Plano criado com sucesso!");
+      plansQuery.refetch();
+      statsQuery.refetch();
+      setShowCreatePlanDialog(false);
+      setCreatePlanForm({
+        code: "", name: "", priceMonthly: "0", priceYearly: "0",
+        description: "", maxTemplates: 5, maxThemes: 5, maxAiUses: 0,
+        unlimitedSheets: false, hasWatermark: true, customLogo: false, displayOrder: 0,
+      });
+    },
+    onError: (err) => {
+      toast.error(`Erro ao criar plano: ${err.message}`);
+    }
+  });
+  const deletePlanMutation = trpc.admin.deletePlan.useMutation({
+    onSuccess: () => {
+      toast.success("Plano removido!");
+      plansQuery.refetch();
+      statsQuery.refetch();
+    },
+    onError: (err) => {
+      toast.error(`Erro ao remover plano: ${err.message}`);
+    }
   });
 
   useEffect(() => {
@@ -536,7 +601,23 @@ export default function Admin() {
               </p>
             </div>
 
-            <form onSubmit={handleAdminLogin} className="space-y-6">
+            <form onSubmit={handleAdminLogin} className="space-y-5">
+              <div className="space-y-2">
+                <Label htmlFor="admin-email">E-mail de Acesso</Label>
+                <div className="relative">
+                  <Users className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    id="admin-email"
+                    type="email"
+                    placeholder="seu@email.com"
+                    className="pl-10"
+                    value={adminEmail}
+                    onChange={(e) => setAdminEmail(e.target.value)}
+                    autoComplete="username"
+                  />
+                </div>
+              </div>
+
               <div className="space-y-2">
                 <Label htmlFor="admin-email">E-mail de Acesso</Label>
                 <div className="relative">
@@ -567,13 +648,14 @@ export default function Admin() {
                     autoComplete="current-password"
                   />
                 </div>
-                {authError && (
-                  <p className="text-xs text-destructive flex items-center gap-1 mt-1">
-                    <AlertCircle className="h-3 w-3" />
-                    {authError}
-                  </p>
-                )}
               </div>
+
+              {authError && (
+                <p className="text-xs text-destructive flex items-center gap-1">
+                  <AlertCircle className="h-3 w-3" />
+                  {authError}
+                </p>
+              )}
 
               <Button type="submit" className="w-full bg-gold-gradient text-black font-bold" disabled={loggingIn}>
                 {loggingIn ? (
@@ -622,6 +704,9 @@ export default function Admin() {
             </TabsTrigger>
             <TabsTrigger value="templates" className="gap-2">
               <FileSpreadsheet className="h-4 w-4" /> Modelos
+            </TabsTrigger>
+            <TabsTrigger value="plans" className="gap-2">
+              <DollarSign className="h-4 w-4" /> Planos e Preços
             </TabsTrigger>
             <TabsTrigger value="categories" className="gap-2">
               <FolderKanban className="h-4 w-4" /> Categorias
@@ -673,27 +758,20 @@ export default function Admin() {
                     Distribuição de Planos
                   </h3>
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <div className="flex items-center justify-between p-4 bg-muted/30 rounded-lg">
-                      <div>
-                        <p className="text-sm font-medium">Free</p>
-                        <p className="text-xs text-muted-foreground">Gratuito</p>
-                      </div>
-                      <Badge variant="outline">{statsQuery.data.planCounts.free} usuários</Badge>
-                    </div>
-                    <div className="flex items-center justify-between p-4 bg-primary/10 rounded-lg">
-                      <div>
-                        <p className="text-sm font-medium">Pro</p>
-                        <p className="text-xs text-muted-foreground">Assinante</p>
-                      </div>
-                      <Badge className="bg-primary/15 text-primary">{statsQuery.data.planCounts.pro} usuários</Badge>
-                    </div>
-                    <div className="flex items-center justify-between p-4 bg-primary/20 rounded-lg">
-                      <div>
-                        <p className="text-sm font-medium">Elite</p>
-                        <p className="text-xs text-muted-foreground">Premium</p>
-                      </div>
-                      <Badge className="bg-gold-gradient text-black">{statsQuery.data.planCounts.elite} usuários</Badge>
-                    </div>
+                    {statsQuery.data.allPlans?.map((p: any) => {
+                      const count = statsQuery.data.planCounts[p.code] ?? 0;
+                      const isFree = parseFloat(p.priceMonthly || "0") <= 0;
+                      const isElite = p.code === "elite";
+                      return (
+                        <div key={p.code} className="flex items-center justify-between p-4 rounded-lg" style={{ backgroundColor: isFree ? "#f5f5f5" : isElite ? "linear-gradient(135deg, #D4AF37, #F9E79F)" : "rgba(0,118,186,0.08)" }}>
+                          <div>
+                            <p className="text-sm font-medium">{p.name || p.code}</p>
+                            <p className="text-xs text-muted-foreground">{isFree ? "Gratuito" : `R$ ${p.priceMonthly}/mês`}</p>
+                          </div>
+                          <Badge variant={isFree ? "outline" : undefined} className={isElite ? "text-black" : !isFree ? "bg-primary/15 text-primary" : ""}>{count} usuários</Badge>
+                        </div>
+                      );
+                    })}
                   </div>
                 </Card>
 
@@ -701,22 +779,17 @@ export default function Admin() {
                 <Card className="p-6">
                   <h3 className="font-semibold mb-4">Ações Rápidas</h3>
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                    <Button
-                      variant="outline"
-                      onClick={() => { setDrawPlan("pro"); setShowDrawDialog(true); }}
-                      className="flex items-center gap-2"
-                    >
-                      <Dice1 className="w-4 h-4" />
-                      Fazer Sorteio (Pro)
-                    </Button>
-                    <Button
-                      variant="outline"
-                      onClick={() => { setDrawPlan("elite"); setShowDrawDialog(true); }}
-                      className="flex items-center gap-2"
-                    >
-                      <Trophy className="w-4 h-4" />
-                      Fazer Sorteio (Elite)
-                    </Button>
+                    {(statsQuery.data.allPlans || []).filter((p: any) => parseFloat(p.priceMonthly || "0") > 0).map((p: any) => (
+                      <Button
+                        key={p.code}
+                        variant="outline"
+                        onClick={() => { setDrawPlan(p.code); setShowDrawDialog(true); }}
+                        className="flex items-center gap-2"
+                      >
+                        <Dice1 className="w-4 h-4" />
+                        Fazer Sorteio ({p.name || p.code})
+                      </Button>
+                    ))}
                     <Button
                       variant="outline"
                       onClick={() => { setShowDrawDialog(true); setDrawPlan("pro"); }}
@@ -774,9 +847,10 @@ export default function Admin() {
                     </thead>
                     <tbody>
                       {usersQuery.data?.map((u: UserInfo) => {
+                        const planInfo = statsQuery.data?.allPlans?.find((p: any) => p.code === u.plan);
                         const planBadge = u.plan === "elite"
                           ? "bg-gold-gradient text-black"
-                          : u.plan === "pro"
+                          : planInfo && parseFloat(planInfo.priceMonthly || "0") > 0
                             ? "bg-primary/15 text-primary"
                             : "bg-muted text-muted-foreground";
 
@@ -822,7 +896,7 @@ export default function Admin() {
                                 <Button
                                   variant="ghost"
                                   size="sm"
-                                  onClick={() => { setUpgradeUserId(u.id); setUpgradePlan(u.plan === "elite" ? "pro" : "elite"); setShowUpgradeDialog(true); }}
+                                  onClick={() => { setUpgradeUserId(u.id); const currentPlanInfo = statsQuery.data?.allPlans?.find((p: any) => p.code === u.plan); const nextPlan = (statsQuery.data?.allPlans || []).filter((p: any) => parseFloat(p.priceMonthly || "0") > 0 && p.code !== u.plan); setUpgradePlan(nextPlan[0]?.code || "pro"); setShowUpgradeDialog(true); }}
                                   title="Upgrade de plano"
                                 >
                                   <ArrowUpRight className="w-3.5 h-3.5" />
@@ -908,7 +982,7 @@ export default function Admin() {
                           <td className="p-3">
                             <Badge className={
                               tpl.plan === "elite" ? "bg-gold-gradient text-black" :
-                              tpl.plan === "pro" ? "bg-primary/15 text-primary" :
+                              (statsQuery.data?.allPlans || []).find((pp: any) => pp.code === tpl.plan)?.displayOrder === 2 ? "bg-primary/15 text-primary" :
                               "bg-muted text-muted-foreground"
                             }>{tpl.plan}</Badge>
                           </td>
@@ -965,6 +1039,163 @@ export default function Admin() {
                       ))}
                     </tbody>
                   </table>
+                </div>
+              )}
+            </Card>
+          </TabsContent>
+
+          {/* ==================== PLANOS E PREÇOS ==================== */}
+          <TabsContent value="plans" className="space-y-4">
+            <Card className="p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="font-semibold flex items-center gap-2">
+                  <DollarSign className="w-4 h-4 text-primary" />
+                  Planos e Preços
+                </h3>
+                <div className="flex items-center gap-2">
+                  <Badge variant="outline">{plansQuery.data?.length || 0} planos</Badge>
+                  <Button size="sm" className="bg-gold-gradient text-black font-semibold" onClick={() => setShowCreatePlanDialog(true)}>
+                    <Plus className="w-4 h-4 mr-1" /> Novo Plano
+                  </Button>
+                </div>
+              </div>
+
+              {plansQuery.isLoading ? (
+                <div className="space-y-2">
+                  {[1, 2, 3].map(i => (
+                    <div key={i} className="h-20 bg-muted/30 rounded animate-pulse" />
+                  ))}
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  {plansQuery.data?.map((p: any) => {
+                    const isEditing = editingPlanCode === p.code;
+                    return (
+                      <Card key={p.code} className="p-5 border-border/40">
+                        <div className="flex items-center justify-between mb-3">
+                          <Badge className={
+                            p.code === "elite" ? "bg-gold-gradient text-black" :
+                            parseFloat(p.priceMonthly || "0") > 0 ? "bg-primary/15 text-primary" :
+                            "bg-muted text-muted-foreground"
+                          }>{p.name || p.code.toUpperCase()}</Badge>
+                          {!isEditing && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => {
+                                setEditingPlanCode(p.code);
+                                setPlanForm({
+                                  priceMonthly: p.priceMonthly ?? "0",
+                                  priceYearly: p.priceYearly ?? "0",
+                                  maxAiUses: p.maxAiUses ?? 0,
+                                  maxTemplates: p.maxTemplates ?? 0,
+                                  description: p.description ?? "",
+                                });
+                              }}
+                            >
+                              Editar
+                            </Button>
+                          )}
+                        </div>
+
+                        {isEditing ? (
+                          <div className="space-y-3">
+                            <div>
+                              <Label className="text-xs">Preço mensal (R$)</Label>
+                              <Input
+                                value={planForm.priceMonthly}
+                                onChange={(e) => setPlanForm(f => ({ ...f, priceMonthly: e.target.value }))}
+                              />
+                            </div>
+                            <div>
+                              <Label className="text-xs">Preço anual (R$)</Label>
+                              <Input
+                                value={planForm.priceYearly}
+                                onChange={(e) => setPlanForm(f => ({ ...f, priceYearly: e.target.value }))}
+                              />
+                            </div>
+                            <div>
+                              <Label className="text-xs">Usos de IA por mês</Label>
+                              <Input
+                                type="number"
+                                value={planForm.maxAiUses}
+                                onChange={(e) => setPlanForm(f => ({ ...f, maxAiUses: Number(e.target.value) }))}
+                              />
+                            </div>
+                            <div>
+                              <Label className="text-xs">Máx. de modelos</Label>
+                              <Input
+                                type="number"
+                                value={planForm.maxTemplates}
+                                onChange={(e) => setPlanForm(f => ({ ...f, maxTemplates: Number(e.target.value) }))}
+                              />
+                            </div>
+                            <div>
+                              <Label className="text-xs">Descrição</Label>
+                              <Input
+                                value={planForm.description}
+                                onChange={(e) => setPlanForm(f => ({ ...f, description: e.target.value }))}
+                              />
+                            </div>
+                            <div className="flex gap-2 pt-1">
+                              <Button
+                                size="sm"
+                                className="bg-gold-gradient text-black font-bold flex-1"
+                                disabled={updatePlanMutation.isPending}
+                                onClick={() => {
+                                  updatePlanMutation.mutate({
+                                    id: p.id,
+                                    code: p.code,
+                                    priceMonthly: planForm.priceMonthly,
+                                    priceYearly: planForm.priceYearly,
+                                    maxAiUses: planForm.maxAiUses,
+                                    maxTemplates: planForm.maxTemplates,
+                                    description: planForm.description,
+                                  });
+                                }}
+                              >
+                                {updatePlanMutation.isPending ? (
+                                  <Loader2 className="w-4 h-4 animate-spin" />
+                                ) : (
+                                  <><Save className="w-4 h-4 mr-2" /> Salvar</>
+                                )}
+                              </Button>
+                              <Button size="sm" variant="outline" onClick={() => setEditingPlanCode(null)}>
+                                Cancelar
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="destructive"
+                                onClick={() => {
+                                  if (confirm(`Tem certeza que deseja remover o plano ${p.name || p.code}?`)) {
+                                    deletePlanMutation.mutate({ id: p.id });
+                                  }
+                                }}
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </Button>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="space-y-2 text-sm">
+                            <p className="text-2xl font-bold">
+                              R$ {Number(p.priceMonthly ?? 0).toFixed(2)}<span className="text-sm text-muted-foreground">/mês</span>
+                            </p>
+                            <p className="text-muted-foreground text-xs">Anual: R$ {Number(p.priceYearly ?? 0).toFixed(2)}</p>
+                            <p className="text-muted-foreground text-xs">{p.description || "Sem descrição"}</p>
+                            <div className="flex items-center justify-between pt-2 text-xs">
+                              <span className="text-muted-foreground">Usos de IA/mês</span>
+                              <span className="font-medium">{p.maxAiUses}</span>
+                            </div>
+                            <div className="flex items-center justify-between text-xs">
+                              <span className="text-muted-foreground">Máx. modelos</span>
+                              <span className="font-medium">{p.maxTemplates}</span>
+                            </div>
+                          </div>
+                        )}
+                      </Card>
+                    );
+                  })}
                 </div>
               )}
             </Card>
@@ -1110,9 +1341,9 @@ export default function Admin() {
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="free">FREE</SelectItem>
-                          <SelectItem value="pro">PRO</SelectItem>
-                          <SelectItem value="elite">ELITE</SelectItem>
+                          {(plansQuery.data || []).map((p: any) => (
+                            <SelectItem key={p.code} value={p.code}>{p.name || p.code}</SelectItem>
+                          ))}
                         </SelectContent>
                       </Select>
                     </div>
@@ -1138,13 +1369,14 @@ export default function Admin() {
               <div className="max-w-md mx-auto space-y-4">
                 <div>
                   <Label>Plano para o vencedor:</Label>
-                  <Select value={drawPlan} onValueChange={(v) => setDrawPlan(v as "pro" | "elite")}>
+                  <Select value={drawPlan} onValueChange={(v) => setDrawPlan(v)}>
                     <SelectTrigger className="mt-2">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="pro">Pro (R$ 14,99/mês)</SelectItem>
-                      <SelectItem value="elite">Elite (R$ 24,99/mês)</SelectItem>
+                      {(statsQuery.data?.allPlans || []).filter((p: any) => parseFloat(p.priceMonthly || "0") > 0).map((p: any) => (
+                        <SelectItem key={p.code} value={p.code}>{p.name} (R$ {p.priceMonthly}/mês)</SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 </div>
@@ -1300,14 +1532,16 @@ export default function Admin() {
             </div>
             <div>
               <Label>Novo Plano:</Label>
-              <Select value={upgradePlan} onValueChange={(v) => setUpgradePlan(v as "free" | "pro" | "elite")}>
+              <Select value={upgradePlan} onValueChange={(v) => setUpgradePlan(v)}>
                 <SelectTrigger className="mt-2">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="free">Free (Gratuito)</SelectItem>
-                  <SelectItem value="pro">Pro (R$ 14,99/mês)</SelectItem>
-                  <SelectItem value="elite">Elite (R$ 24,99/mês)</SelectItem>
+                  {(statsQuery.data?.allPlans || []).map((p: any) => (
+                    <SelectItem key={p.code} value={p.code}>
+                      {p.name} ({parseFloat(p.priceMonthly || "0") > 0 ? `R$ ${p.priceMonthly}/mês` : "Gratuito"})
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
@@ -1555,9 +1789,9 @@ export default function Admin() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="free">FREE</SelectItem>
-                    <SelectItem value="pro">PRO</SelectItem>
-                    <SelectItem value="elite">ELITE</SelectItem>
+                    {(plansQuery.data || []).map((p: any) => (
+                      <SelectItem key={p.code} value={p.code}>{p.name || p.code}</SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>
@@ -1662,6 +1896,135 @@ export default function Admin() {
             >
               {(createTemplateMutation.isPending || updateTemplateMutation.isPending) && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
               Salvar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ==================== MODAL: Novo Plano ==================== */}
+      <Dialog open={showCreatePlanDialog} onOpenChange={setShowCreatePlanDialog}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Crown className="w-5 h-5 text-primary" />
+              Criar Novo Plano
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div>
+              <Label>Código (identificador único)</Label>
+              <Input
+                className="mt-1.5"
+                value={createPlanForm.code}
+                onChange={(e) => setCreatePlanForm(f => ({ ...f, code: e.target.value }))}
+                placeholder="Ex: premium"
+              />
+            </div>
+            <div>
+              <Label>Nome do Plano</Label>
+              <Input
+                className="mt-1.5"
+                value={createPlanForm.name}
+                onChange={(e) => setCreatePlanForm(f => ({ ...f, name: e.target.value }))}
+                placeholder="Ex: Premium"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label>Preço Mensal (R$)</Label>
+                <Input
+                  className="mt-1.5"
+                  value={createPlanForm.priceMonthly}
+                  onChange={(e) => setCreatePlanForm(f => ({ ...f, priceMonthly: e.target.value }))}
+                />
+              </div>
+              <div>
+                <Label>Preço Anual (R$)</Label>
+                <Input
+                  className="mt-1.5"
+                  value={createPlanForm.priceYearly}
+                  onChange={(e) => setCreatePlanForm(f => ({ ...f, priceYearly: e.target.value }))}
+                />
+              </div>
+            </div>
+            <div>
+              <Label>Descrição</Label>
+              <Textarea
+                className="mt-1.5"
+                value={createPlanForm.description}
+                onChange={(e) => setCreatePlanForm(f => ({ ...f, description: e.target.value }))}
+              />
+            </div>
+            <div className="grid grid-cols-3 gap-3">
+              <div>
+                <Label className="text-xs">Usos IA</Label>
+                <Input
+                  type="number"
+                  className="mt-1.5"
+                  value={createPlanForm.maxAiUses}
+                  onChange={(e) => setCreatePlanForm(f => ({ ...f, maxAiUses: Number(e.target.value) }))}
+                />
+              </div>
+              <div>
+                <Label className="text-xs">Máx. Modelos</Label>
+                <Input
+                  type="number"
+                  className="mt-1.5"
+                  value={createPlanForm.maxTemplates}
+                  onChange={(e) => setCreatePlanForm(f => ({ ...f, maxTemplates: Number(e.target.value) }))}
+                />
+              </div>
+              <div>
+                <Label className="text-xs">Máx. Temas</Label>
+                <Input
+                  type="number"
+                  className="mt-1.5"
+                  value={createPlanForm.maxThemes}
+                  onChange={(e) => setCreatePlanForm(f => ({ ...f, maxThemes: Number(e.target.value) }))}
+                />
+              </div>
+            </div>
+            <div className="flex items-center gap-4 pt-2">
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={createPlanForm.unlimitedSheets}
+                  onChange={(e) => setCreatePlanForm(f => ({ ...f, unlimitedSheets: e.target.checked }))}
+                />
+                Planilhas ilimitadas
+              </label>
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={createPlanForm.hasWatermark}
+                  onChange={(e) => setCreatePlanForm(f => ({ ...f, hasWatermark: e.target.checked }))}
+                />
+                Marca d'água
+              </label>
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={createPlanForm.customLogo}
+                  onChange={(e) => setCreatePlanForm(f => ({ ...f, customLogo: e.target.checked }))}
+                />
+                Logo customizado
+              </label>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowCreatePlanDialog(false)}>Cancelar</Button>
+            <Button
+              className="bg-gold-gradient text-black font-bold"
+              disabled={createPlanMutation.isPending || !createPlanForm.code || !createPlanForm.name}
+              onClick={() => {
+                createPlanMutation.mutate({
+                  ...createPlanForm,
+                  features: [],
+                });
+              }}
+            >
+              {createPlanMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
+              Criar Plano
             </Button>
           </DialogFooter>
         </DialogContent>

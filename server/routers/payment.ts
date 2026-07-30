@@ -20,7 +20,7 @@ export const paymentRouter = router({
   createUpgradePreference: protectedProcedure
     .input(
       z.object({
-        planCode: z.enum(["pro", "elite"]),
+        planCode: z.string().min(1).max(60),
         successUrl: z.string().url(),
         failureUrl: z.string().url(),
       })
@@ -96,7 +96,7 @@ export const paymentRouter = router({
    * Obter informações do plano
    */
   getPlanInfo: publicProcedure
-    .input(z.object({ planCode: z.enum(["free", "pro", "elite"]) }))
+    .input(z.object({ planCode: z.string().min(1).max(60) }))
     .query(async ({ input }) => {
       const plan = await db.getPlanByCode(input.planCode);
       if (!plan) {
@@ -125,4 +125,32 @@ export const paymentRouter = router({
       features: plan.features,
     }));
   }),
+
+  /**
+   * Verificar status de um pagamento específico por preferência
+   * Útil para o polling do frontend
+   */
+  checkStatus: protectedProcedure
+    .input(z.object({ preferenceId: z.string() }))
+    .query(async ({ ctx, input }) => {
+      const user = ctx.user;
+      if (!user.id || user.id === 999999) return { status: "unknown" };
+
+      // Buscar o último pagamento do usuário com esta preferência
+      // Nota: Em um sistema real, poderíamos ter uma tabela de 'orders'
+      // Como estamos usando external_reference, vamos verificar o plano atual do usuário
+      const currentUser = await db.getUserById(user.id);
+      
+      // Se o plano já foi atualizado recentemente, consideramos aprovado
+      const currentPlanInfo = await db.getPlanByCode(currentUser.plan as string);
+      const isPaid = currentPlanInfo && parseFloat(currentPlanInfo.priceMonthly || "0") > 0;
+      if (currentUser && isPaid && currentUser.planExpiresAt) {
+        const now = new Date();
+        if (currentUser.planExpiresAt > now) {
+          return { status: "approved" };
+        }
+      }
+
+      return { status: "pending" };
+    }),
 });

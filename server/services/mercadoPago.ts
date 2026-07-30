@@ -82,7 +82,7 @@ class MercadoPagoService {
   async createPlanUpgradePreference(
     userId: number,
     userEmail: string,
-    planCode: 'pro' | 'elite',
+    planCode: string,
     planPrice: number,
     planName: string,
     successUrl: string,
@@ -165,9 +165,9 @@ class MercadoPagoService {
             // Formato: user_{userId}_plan_{planCode}_{timestamp}
             const parts = externalReference.split('_');
             const userId = parseInt(parts[1], 10);
-            const planCode = parts[3] as 'pro' | 'elite';
-
-            if (!isNaN(userId) && (planCode === 'pro' || planCode === 'elite')) {
+            const planCode = parts[3];
+            const planInfo = await db.getPlanByCode(planCode);
+            if (!isNaN(userId) && planInfo && parseFloat(planInfo.priceMonthly || '0') > 0) {
               console.log(`Atualizando plano do usuário ${userId} para ${planCode}`);
               // Define a data de expiração para 30 dias a partir do pagamento
               const expiresAt = new Date();

@@ -17,6 +17,7 @@ import CheckoutFailure from "./pages/CheckoutFailure";
 import Loading from "./pages/Loading";
 import { useEffect, useState } from "react";
 import { checkEnvironmentVariables, EnvCheckResult } from "./lib/env-check";
+import { trpc } from "./lib/trpc";
 
 function Router() {
   return (
@@ -43,6 +44,12 @@ function Router() {
 
 function App() {
   const [envCheck, setEnvCheck] = useState<EnvCheckResult | null>(null);
+  const cronMutation = trpc.system.cron.useMutation();
+
+  useEffect(() => {
+    // Executa manutenção de planos expirados ao carregar o app
+    cronMutation.mutate();
+  }, []);
 
   useEffect(() => {
     const result = checkEnvironmentVariables();

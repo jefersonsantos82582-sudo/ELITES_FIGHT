@@ -1,8 +1,6 @@
 import { pgTable, serial, text, timestamp, varchar, boolean, jsonb, pgEnum, integer } from "drizzle-orm/pg-core";
 
 export const roleEnum = pgEnum("role", ["user", "admin"]);
-export const planEnum = pgEnum("plan", ["free", "pro", "elite"]);
-export const planCodeEnum = pgEnum("plan_code", ["free", "pro", "elite"]);
 
 /**
  * Core user table backing auth flow.
@@ -15,7 +13,7 @@ export const users = pgTable("users", {
   photoUrl: text("photoUrl"),
   loginMethod: varchar("loginMethod", { length: 64 }),
   role: roleEnum("role").default("user").notNull(),
-  plan: planEnum("plan").default("free").notNull(),
+  plan: varchar("plan", { length: 60 }).default("free").notNull(),
   suspended: boolean("suspended").default(false).notNull(),
   sheetsGenerated: integer("sheetsGenerated").default(0).notNull(),
   aiUsesLeft: integer("aiUsesLeft").default(0).notNull(),
@@ -48,7 +46,7 @@ export const templates = pgTable("templates", {
   name: varchar("name", { length: 200 }).notNull(),
   slug: varchar("slug", { length: 220 }).notNull().unique(),
   description: text("description"),
-  plan: planEnum("plan").default("free").notNull(),
+  plan: varchar("plan", { length: 60 }).default("free").notNull(),
   columns: jsonb("columns").notNull(),
   sampleRows: jsonb("sampleRows"),
   headerColor: varchar("headerColor", { length: 20 }).default("#D4AF37"),
@@ -79,7 +77,7 @@ export const generatedSheets = pgTable("generatedSheets", {
  */
 export const plans = pgTable("plans", {
   id: serial("id").primaryKey(),
-  code: planCodeEnum("code").notNull().unique(),
+  code: varchar("code", { length: 60 }).notNull().unique(),
   name: varchar("name", { length: 60 }).notNull(),
   priceMonthly: varchar("priceMonthly", { length: 20 }).default("0"),
   priceYearly: varchar("priceYearly", { length: 20 }).default("0"),
@@ -88,6 +86,7 @@ export const plans = pgTable("plans", {
   maxTemplates: integer("maxTemplates").default(5).notNull(),
   maxThemes: integer("maxThemes").default(5).notNull(),
   maxAiUses: integer("maxAiUses").default(0).notNull(),
+  maxSheetsPerMonth: integer("maxSheetsPerMonth").default(1).notNull(),
   unlimitedSheets: boolean("unlimitedSheets").default(false).notNull(),
   hasWatermark: boolean("hasWatermark").default(true).notNull(),
   customLogo: boolean("customLogo").default(false).notNull(),
