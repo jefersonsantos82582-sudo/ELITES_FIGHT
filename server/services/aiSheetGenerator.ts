@@ -177,24 +177,40 @@ async function callGemini(prompt: string): Promise<string> {
 
   const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${ENV.geminiApiKey}`;
 
-  const response = await axios.post(url, {
-    contents: [
-      {
-        parts: [
-          { text: prompt }
-        ]
+  let response;
+  try {
+    response = await axios.post(url, {
+      contents: [
+        {
+          parts: [
+            { text: prompt }
+          ]
+        }
+      ],
+      generationConfig: {
+        temperature: 0.7,
+        maxOutputTokens: 8192,
+        responseMimeType: "application/json",
+        responseSchema: SHEET_RESPONSE_SCHEMA,
+        thinkingConfig: {
+          thinkingBudget: 0,
+        },
       }
-    ],
-    generationConfig: {
-      temperature: 0.7,
-      maxOutputTokens: 8192,
-      responseMimeType: "application/json",
-      responseSchema: SHEET_RESPONSE_SCHEMA,
-      thinkingConfig: {
-        thinkingBudget: 0,
-      },
+    });
+  } catch (err) {
+    // O axios só devolve "Request failed with status code XXX" por padrão,
+    // escondendo o motivo real que o Google manda no corpo do erro (modelo
+    // não encontrado, sem billing habilitado, quota excedida, etc).
+    if (axios.isAxiosError(err)) {
+      const status = err.response?.status;
+      const googleMessage = err.response?.data?.error?.message || JSON.stringify(err.response?.data)?.slice(0, 500);
+      console.error("[AI Sheet Generator] Erro HTTP do Gemini:", status, googleMessage);
+      throw new Error(
+        `Gemini retornou erro ${status ?? ""}: ${googleMessage || err.message}`
+      );
     }
-  });
+    throw err;
+  }
 
   const candidate = response.data?.candidates?.[0];
   const content = candidate?.content?.parts?.[0]?.text;
