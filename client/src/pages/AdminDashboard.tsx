@@ -299,6 +299,21 @@ function PlanDialog({ open, onOpenChange, plan }: any) {
     onError: (e) => toast.error(e.message),
   });
 
+  const deleteMutation = trpc.admin.deletePlan.useMutation({
+    onSuccess: () => {
+      utils.plans.list.invalidate();
+      toast.success("Plano deletado");
+      onOpenChange(false);
+    },
+    onError: (e) => toast.error(e.message),
+  });
+
+  const handleDelete = () => {
+    if (!plan) return;
+    if (!window.confirm(`Tem certeza que deseja deletar o plano "${plan.name}"? Essa ação não pode ser desfeita.`)) return;
+    deleteMutation.mutate({ id: plan.id });
+  };
+
   const handleSave = () => {
     if (!plan) return;
     updateMutation.mutate({
@@ -370,6 +385,14 @@ function PlanDialog({ open, onOpenChange, plan }: any) {
             className="w-full bg-gold-gradient text-black font-semibold"
           >
             {updateMutation.isPending ? "Salvando..." : "Salvar Alterações"}
+          </Button>
+          <Button
+            onClick={handleDelete}
+            disabled={deleteMutation.isPending}
+            variant="destructive"
+            className="w-full"
+          >
+            {deleteMutation.isPending ? "Deletando..." : "Deletar Plano"}
           </Button>
         </div>
       </DialogContent>
