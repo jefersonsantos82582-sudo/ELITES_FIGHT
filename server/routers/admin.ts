@@ -102,6 +102,8 @@ export const adminRouter = router({
   stats: adminProcedure.query(async () => {
     const users = await db.getAllUsers();
     const sheets = await db.getAllGeneratedSheets();
+    const totalPageViews = await db.getPageViewsCount();
+    const approvedPayments = await db.getApprovedPaymentsCount();
 
     const allPlans = await db.getAllPlans();
     const planCounts: Record<string, number> = {};
@@ -122,6 +124,8 @@ export const adminRouter = router({
       totalTemplates: (await db.getAllTemplates()).length,
       planCounts,
       monthlyRevenue,
+      totalPageViews,
+      completedSales: approvedPayments,
       allPlans,
     };
   }),

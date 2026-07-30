@@ -708,7 +708,7 @@ export default function Admin() {
               </div>
             ) : statsQuery.data ? (
               <>
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-6 gap-4">
                   <Card className="p-6">
                     <p className="text-sm text-muted-foreground">Total de Usuários</p>
                     <p className="text-3xl font-bold">{statsQuery.data.totalUsers}</p>
@@ -724,6 +724,14 @@ export default function Admin() {
                   <Card className="p-6">
                     <p className="text-sm text-muted-foreground">Receita Estimada</p>
                     <p className="text-3xl font-bold text-primary">R$ {statsQuery.data.monthlyRevenue.toFixed(2)}</p>
+                  </Card>
+                  <Card className="p-6">
+                    <p className="text-sm text-muted-foreground">Acessos ao Site</p>
+                    <p className="text-3xl font-bold">{statsQuery.data.totalPageViews || 0}</p>
+                  </Card>
+                  <Card className="p-6">
+                    <p className="text-sm text-muted-foreground">Vendas Concluídas</p>
+                    <p className="text-3xl font-bold text-green-600">{statsQuery.data.completedSales || 0}</p>
                   </Card>
                 </div>
 
