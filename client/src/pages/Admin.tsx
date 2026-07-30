@@ -1034,6 +1034,7 @@ export default function Admin() {
                     <Plus className="w-4 h-4 mr-1" /> Novo Plano
                   </Button>
                 </div>
+              </div>
 
               {plansQuery.isLoading ? (
                 <div className="space-y-2">

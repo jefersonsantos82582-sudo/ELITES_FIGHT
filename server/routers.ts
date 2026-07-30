@@ -215,9 +215,13 @@ export const appRouter = router({
         throw new Error("Não foi possível localizar as permissões do seu plano.");
       }
 
-      const allowedTemplates = (await db.getAllTemplates())
+      const allTemplates = await db.getAllTemplates();
+      const allPlans = await db.getAllPlans();
+      const planMap = new Map(allPlans.map(p => [p.code, p]));
+      
+      const allowedTemplates = allTemplates
         .filter((item) => {
-          const itemPlanInfo = await db.getPlanByCode(item.plan as string);
+          const itemPlanInfo = planMap.get(item.plan as string);
           return (userPlanInfo?.displayOrder ?? 0) >= (itemPlanInfo?.displayOrder ?? 0);
         })
         .slice(0, plan.maxTemplates);
