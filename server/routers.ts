@@ -184,7 +184,6 @@ export const appRouter = router({
       customName: z.string().min(1).max(200),
       headerColor: z.string().regex(/^#[0-9A-Fa-f]{6}$/, "Cor de cabeçalho inválida").optional(),
       accentColor: z.string().regex(/^#[0-9A-Fa-f]{6}$/, "Cor de destaque inválida").optional(),
-      extraInfo: z.string().max(2_000, "Informações extras muito longas").optional(),
     })).mutation(async ({ ctx, input }) => {
       const user = ctx.user;
 
@@ -246,7 +245,6 @@ export const appRouter = router({
         headerColor: input.headerColor || template.headerColor || "#D4AF37",
         accentColor: input.accentColor || template.accentColor || "#1A1A1A",
         hasWatermark: plan?.hasWatermark ?? true,
-        extraInfo: input.extraInfo,
       });
 
       // Upload to S3

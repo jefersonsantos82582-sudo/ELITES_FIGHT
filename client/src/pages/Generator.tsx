@@ -10,7 +10,6 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { trpc } from "@/lib/trpc";
 import { useAuth } from "@/_core/hooks/useAuth";
@@ -44,7 +43,6 @@ export default function Generator() {
   const [customName, setCustomName] = useState("");
   const [headerColor, setHeaderColor] = useState("#D4AF37");
   const [accentColor, setAccentColor] = useState("#1A1A1A");
-  const [extraInfo, setExtraInfo] = useState("");
   const [generated, setGenerated] = useState<{ fileUrl: string; fileName: string } | null>(null);
   const [authRetryCount, setAuthRetryCount] = useState(0);
 
@@ -122,7 +120,6 @@ export default function Generator() {
       customName,
       headerColor,
       accentColor,
-      extraInfo: extraInfo || undefined,
     });
   };
 
@@ -341,18 +338,6 @@ export default function Generator() {
                       <Input value={accentColor} onChange={e => setAccentColor(e.target.value)} className="flex-1" />
                     </div>
                   </div>
-                </div>
-
-                <div>
-                  <Label htmlFor="extraInfo">Informações extras (opcional)</Label>
-                  <Textarea
-                    id="extraInfo"
-                    value={extraInfo}
-                    onChange={e => setExtraInfo(e.target.value)}
-                    placeholder="Adicione notas, descrições ou instruções..."
-                    className="mt-1.5"
-                    rows={3}
-                  />
                 </div>
               </div>
             </Card>
