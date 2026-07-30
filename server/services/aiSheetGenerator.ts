@@ -183,34 +183,51 @@ const GEMINI_MODEL_FALLBACKS = [
   "gemini-2.5-flash",
 ];
 
+// A partir da série Gemini 3 o parâmetro para controlar o "thinking" mudou de
+// thinkingConfig.thinkingBudget (número de tokens, aceitava 0 = desligado)
+// para thinkingConfig.thinkingLevel ("minimal" | "low" | "medium" | "high").
+// Mandar thinkingBudget para um modelo 3.x (ou vice-versa) resulta em erro
+// 400 "Request contains an invalid argument" — por isso o config precisa ser
+// montado por modelo, e não fixo.
+function isGemini3Model(model: string): boolean {
+  return /gemini-3|gemini-flash-latest|gemini-pro-latest/.test(model);
+}
+
+function getThinkingConfig(model: string): Record<string, unknown> {
+  return isGemini3Model(model)
+    ? { thinkingLevel: "minimal" }
+    : { thinkingBudget: 0 };
+}
+
 async function callGemini(prompt: string): Promise<string> {
   if (!ENV.geminiApiKey) {
     throw new Error("GEMINI_API_KEY não configurada no Render.");
   }
 
-  const body = {
-    contents: [
-      {
-        parts: [
-          { text: prompt }
-        ]
-      }
-    ],
-    generationConfig: {
-      temperature: 0.7,
-      maxOutputTokens: 8192,
-      responseMimeType: "application/json",
-      responseSchema: SHEET_RESPONSE_SCHEMA,
-      thinkingConfig: {
-        thinkingBudget: 0,
-      },
-    }
-  };
-
   let lastError: Error | null = null;
 
   for (const model of GEMINI_MODEL_FALLBACKS) {
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${ENV.geminiApiKey}`;
+
+    const body = {
+      contents: [
+        {
+          parts: [
+            { text: prompt }
+          ]
+        }
+      ],
+      generationConfig: {
+        temperature: 0.7,
+        // Modelos "3.x" continuam gastando tokens de thinking mesmo em nível
+        // mínimo, então damos mais folga de saída para não estourar o limite
+        // antes do JSON final ser escrito.
+        maxOutputTokens: isGemini3Model(model) ? 16000 : 8192,
+        responseMimeType: "application/json",
+        responseSchema: SHEET_RESPONSE_SCHEMA,
+        thinkingConfig: getThinkingConfig(model),
+      }
+    };
 
     let response;
     try {
@@ -218,15 +235,17 @@ async function callGemini(prompt: string): Promise<string> {
     } catch (err) {
       // O axios só devolve "Request failed with status code XXX" por padrão,
       // escondendo o motivo real que o Google manda no corpo do erro (modelo
-      // não encontrado/descontinuado, sem billing habilitado, quota excedida, etc).
+      // não encontrado/descontinuado, parâmetro incompatível com a versão do
+      // modelo, sem billing habilitado, quota excedida, etc).
       if (axios.isAxiosError(err)) {
         const status = err.response?.status;
         const googleMessage = err.response?.data?.error?.message || JSON.stringify(err.response?.data)?.slice(0, 500);
         console.error(`[AI Sheet Generator] Erro HTTP do Gemini (modelo ${model}):`, status, googleMessage);
         lastError = new Error(`Gemini retornou erro ${status ?? ""}: ${googleMessage || err.message}`);
-        // Se o modelo não existe/foi descontinuado (404) ou não está disponível
-        // para essa chave (403), tenta o próximo modelo da lista.
-        if (status === 404 || status === 403) {
+        // Modelo não encontrado/descontinuado (404), não disponível para essa
+        // chave (403) ou requisição rejeitada (400, ex: parâmetro incompatível)
+        // — tenta o próximo modelo da lista em vez de falhar direto.
+        if (status === 404 || status === 403 || status === 400) {
           continue;
         }
         throw lastError;
