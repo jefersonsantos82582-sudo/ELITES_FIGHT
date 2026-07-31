@@ -1,4 +1,4 @@
-import { Crown, Settings as SettingsIcon, User, Mail, Shield } from "lucide-react";
+import { Crown, Settings as SettingsIcon, User, Mail, Shield, Lightbulb, Gift, Zap } from "lucide-react";
 import DashboardLayout from "@/components/DashboardLayout";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -94,6 +94,50 @@ export default function Settings() {
             </div>
           </div>
         </Card>
+
+        {/* Enviar ideia - exclusivo PRO e ELITE */}
+        {(overview?.plan === "pro" || overview?.plan === "elite") && (
+          <Card className="p-6 bg-card/50 border-border/30">
+            <h3 className="font-semibold mb-4 flex items-center gap-2">
+              <Lightbulb className="w-4 h-4 text-primary" />
+              Enviar ideia
+            </h3>
+            <p className="text-sm text-muted-foreground mb-4">
+              Tem uma sugestão para o ELITES_FIGHT? Membros {overview?.plan === "elite" ? "ELITE" : "PRO"} têm
+              linha direta com a equipe.
+            </p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm mb-4">
+              <div className="flex items-center gap-2 text-muted-foreground">
+                <Zap className="w-4 h-4 text-primary shrink-0" />
+                {overview?.plan === "elite" ? "Prioridade máxima no atendimento" : "Prioridade média no atendimento"}
+              </div>
+              <div className="flex items-center gap-2 text-muted-foreground">
+                <Gift className="w-4 h-4 text-primary shrink-0" />
+                Pode ganhar meses grátis
+              </div>
+              <div className="flex items-center gap-2 text-muted-foreground sm:col-span-2">
+                <Crown className="w-4 h-4 text-primary shrink-0" />
+                Pode participar de sorteios exclusivos
+              </div>
+            </div>
+            <Button
+              onClick={() => {
+                const planLabel = (overview?.planName || overview?.plan || "").toString().toUpperCase();
+                const dataAssinatura = user?.createdAt
+                  ? new Intl.DateTimeFormat("pt-BR", { year: "numeric", month: "long", day: "numeric" }).format(new Date(user.createdAt as unknown as string))
+                  : "-";
+                const subject = `Sugestão para o ELITES_FIGHT - Plano ${planLabel}`;
+                const body = `Olá, equipe ELITES_FIGHT.\n\nNome: ${user?.name || "-"}\nE-mail: ${user?.email || "-"}\nPlano: ${planLabel}\nData da assinatura: ${dataAssinatura}\n\nMinha sugestão:\n[Digite aqui]`;
+                const gmailUrl = `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent("jefersonsantos82582@gmail.com")}&su=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+                window.open(gmailUrl, "_blank", "noopener,noreferrer");
+              }}
+              className="bg-gold-gradient text-black font-semibold"
+            >
+              <Lightbulb className="w-4 h-4 mr-2" />
+              Enviar ideia
+            </Button>
+          </Card>
+        )}
 
         {/* Security */}
         <Card className="p-6 bg-card/50 border-border/30">
