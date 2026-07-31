@@ -14,6 +14,7 @@ import {
   FolderKanban, Palette, Plus, Pencil, Trash2, X
 } from "lucide-react";
 import DashboardLayout from "@/components/DashboardLayout";
+import PlanVerifiedBadge from "@/components/PlanVerifiedBadge";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -849,7 +850,10 @@ export default function Admin() {
                                     {(u.name || u.email || "?")[0].toUpperCase()}
                                   </div>
                                 )}
-                                <span className="font-medium truncate max-w-[120px]">{u.name || "Sem nome"}</span>
+                                <span className="font-medium truncate max-w-[120px] flex items-center gap-1">
+                                  {u.name || "Sem nome"}
+                                  <PlanVerifiedBadge plan={u.plan} size={13} />
+                                </span>
                               </div>
                             </td>
                             <td className="p-3 text-muted-foreground truncate max-w-[150px]">{u.email || "-"}</td>

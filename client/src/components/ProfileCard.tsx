@@ -4,6 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { Crown, Mail, Calendar } from "lucide-react";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
+import PlanVerifiedBadge from "@/components/PlanVerifiedBadge";
 
 interface ProfileCardProps {
   userName: string;
@@ -61,7 +62,10 @@ export default function ProfileCard({
         {/* Profile Info Section */}
         <div className="flex-1 space-y-4">
           <div>
-            <h2 className="text-2xl font-bold">{userName}</h2>
+            <h2 className="text-2xl font-bold flex items-center gap-1.5">
+              {userName}
+              <PlanVerifiedBadge plan={plan} size={20} />
+            </h2>
             <div className="flex items-center gap-2 text-muted-foreground mt-1">
               <Mail className="w-4 h-4" />
               <span className="text-sm">{userEmail}</span>
