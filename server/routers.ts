@@ -83,12 +83,14 @@ export const appRouter = router({
       const templates = await db.getAllTemplates();
       const allPlans = await db.getAllPlans();
       const userPlanDisplayOrder = plan?.displayOrder ?? 0;
-      const availableTemplates = templates
-        .filter((template) => {
-          const tplPlan = allPlans.find(p => p.code === (template.plan as string));
-          return userPlanDisplayOrder >= (tplPlan?.displayOrder ?? 0);
-        })
-        .slice(0, plan?.maxTemplates ?? 0);
+      // Hierarquia de planos: FREE < PRO < ELITE. Um usuário tem acesso a
+      // TODOS os templates do seu nível e dos níveis abaixo — nunca aplicar
+      // um corte artificial (ex.: maxTemplates) sobre essa lista, senão
+      // usuários pagantes ficam com templates do próprio plano bloqueados.
+      const availableTemplates = templates.filter((template) => {
+        const tplPlan = allPlans.find(p => p.code === (template.plan as string));
+        return userPlanDisplayOrder >= (tplPlan?.displayOrder ?? 0);
+      });
       const startOfMonth = new Date();
       startOfMonth.setDate(1);
       startOfMonth.setHours(0, 0, 0, 0);
@@ -216,19 +218,10 @@ export const appRouter = router({
         throw new Error("Não foi possível localizar as permissões do seu plano.");
       }
 
-      const allTemplates = await db.getAllTemplates();
-      const allPlans = await db.getAllPlans();
-      const planMap = new Map(allPlans.map(p => [p.code, p]));
-      
-      const allowedTemplates = allTemplates
-        .filter((item) => {
-          const itemPlanInfo = planMap.get(item.plan as string);
-          return (userPlanInfo?.displayOrder ?? 0) >= (itemPlanInfo?.displayOrder ?? 0);
-        })
-        .slice(0, plan.maxTemplates);
-      if (!allowedTemplates.some((item) => item.id === template.id)) {
-        throw new Error("Este modelo não está incluído no limite atual do seu plano. Faça upgrade para liberá-lo.");
-      }
+      // A checagem de hierarquia já foi feita acima (displayOrder do plano do
+      // usuário vs. displayOrder do plano exigido pelo template). Não aplicar
+      // nenhum corte adicional (ex.: maxTemplates) aqui — isso bloqueava
+      // templates que o usuário tinha permissão de plano para usar.
 
       // Free-plan allowance resets at the start of each calendar month.
       if (!plan.unlimitedSheets) {
