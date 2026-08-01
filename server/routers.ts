@@ -130,7 +130,9 @@ export const appRouter = router({
   // ==================== Generator ====================
   generator: router({
     generateWithAI: protectedProcedure.input(z.object({
-      modelType: z.enum(["bebidas", "produtos", "clientes"]),
+      // Antes era um enum fixo de 3 valores (bebidas/produtos/clientes), o que
+      // limitava o gerador com IA. Agora aceita qualquer categoria cadastrada.
+      categoryId: z.number(),
       description: z.string().min(1).max(500),
       customName: z.string().min(1).max(200),
       headerColor: z.string().regex(/^#[0-9A-Fa-f]{6}$/, "Cor de cabecalho invalida").optional(),
@@ -151,13 +153,21 @@ export const appRouter = router({
       if (plan.maxAiUses > 0 && user.aiUsesLeft <= 0) {
         throw new Error("Voce atingiu o limite de geracoes com IA do seu plano. Faca upgrade ou aguarde o proximo mes!");
       }
+      const category = await db.getCategoryById(input.categoryId);
+      if (!category) {
+        throw new Error("Categoria nao encontrada. Escolha uma categoria valida.");
+      }
       const aiResult = await generateSheetWithAI({
-        modelType: input.modelType,
+        categoryName: category.name,
+        categoryDescription: category.description ?? null,
         description: input.description,
         customName: input.customName,
+        headerColor: input.headerColor,
+        accentColor: input.accentColor,
+        userPlan: userPlan,
       });
       const buffer = await generateSpreadsheet({
-        templateName: `${input.modelType.charAt(0).toUpperCase() + input.modelType.slice(1)} (IA)`,
+        templateName: `${category.name} (IA)`,
         customName: input.customName,
         columns: aiResult.columns as ColumnDef[],
         sampleRows: aiResult.sampleRows,
@@ -170,7 +180,7 @@ export const appRouter = router({
       const record = await db.createGeneratedSheet({
         userId: ctx.user.id,
         templateId: 0,
-        templateName: `${input.modelType} (IA)`,
+        templateName: `${category.name} (IA)`,
         customName: input.customName,
         fileUrl: url,
         fileKey: key,

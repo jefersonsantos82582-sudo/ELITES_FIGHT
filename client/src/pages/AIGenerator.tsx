@@ -24,7 +24,11 @@ export default function AIGenerator() {
     refetchOnWindowFocus: false,
   });
 
-  const [modelType, setModelType] = useState<"bebidas" | "produtos" | "clientes">("bebidas");
+  // Categorias vêm do banco (antes eram 3 tipos fixos no código).
+  const { data: categories } = trpc.categories.list.useQuery(undefined, {
+    refetchOnWindowFocus: false,
+  });
+  const [categoryId, setCategoryId] = useState<number | null>(null);
   const [description, setDescription] = useState("");
   const [customName, setCustomName] = useState("");
   const [headerColor, setHeaderColor] = useState("#D4AF37");
@@ -59,13 +63,18 @@ export default function AIGenerator() {
   const aiUsesLeft = overview?.aiUsesLeft ?? 0;
   const canUseAI = aiUsesLeft > 0 || userPlan === "elite";
 
-  const modelDescriptions = {
-    bebidas: "Crie uma planilha profissional para controle de bebidas com categorias, marcas, preços e estoque.",
-    produtos: "Gere uma planilha de controle de produtos com SKU, categorias, preços de custo/venda e estoque.",
-    clientes: "Construa uma planilha de gestão de clientes com contatos, histórico de compras e categorização.",
-  };
+  // Seleciona a primeira categoria automaticamente quando a lista carrega.
+  const selectedCategory = useMemo(
+    () => categories?.find((c) => c.id === categoryId) ?? categories?.[0] ?? null,
+    [categories, categoryId]
+  );
+  const effectiveCategoryId = selectedCategory?.id ?? null;
 
   const handleGenerate = () => {
+    if (!effectiveCategoryId) {
+      toast.error("Escolha o tipo de planilha");
+      return;
+    }
     if (!customName.trim()) {
       toast.error("Digite um nome para sua planilha");
       return;
@@ -81,7 +90,7 @@ export default function AIGenerator() {
 
     setGenerated(null);
     generateMutation.mutate({
-      modelType,
+      categoryId: effectiveCategoryId,
       description,
       customName,
       headerColor,
@@ -191,22 +200,36 @@ export default function AIGenerator() {
                 <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center text-sm font-bold text-primary">1</div>
                 <h3 className="font-semibold">Escolha o tipo de planilha</h3>
               </div>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                {(["bebidas", "produtos", "clientes"] as const).map((type) => (
-                  <button
-                    key={type}
-                    onClick={() => setModelType(type)}
-                    className={`p-4 rounded-lg border transition-all text-left ${
-                      modelType === type
-                        ? "border-primary bg-primary/5"
-                        : "border-border/30 hover:border-primary/30"
-                    }`}
-                  >
-                    <p className="font-semibold text-sm capitalize mb-1">{type}</p>
-                    <p className="text-xs text-muted-foreground">{modelDescriptions[type]}</p>
-                  </button>
-                ))}
-              </div>
+              {!categories ? (
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Carregando categorias...
+                </div>
+              ) : categories.length === 0 ? (
+                <p className="text-sm text-muted-foreground">
+                  Nenhuma categoria disponível no momento.
+                </p>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  {categories.map((cat) => (
+                    <button
+                      key={cat.id}
+                      onClick={() => setCategoryId(cat.id)}
+                      className={`p-4 rounded-lg border transition-all text-left ${
+                        effectiveCategoryId === cat.id
+                          ? "border-primary bg-primary/5"
+                          : "border-border/30 hover:border-primary/30"
+                      }`}
+                    >
+                      <p className="font-semibold text-sm capitalize mb-1">{cat.name}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {cat.description ||
+                          `Gere uma planilha profissional de ${cat.name.toLowerCase()} com a estrutura ideal criada por IA.`}
+                      </p>
+                    </button>
+                  ))}
+                </div>
+              )}
             </Card>
 
             {/* Step 2: Describe */}
@@ -233,13 +256,9 @@ export default function AIGenerator() {
                     id="description"
                     value={description}
                     onChange={e => setDescription(e.target.value)}
-                    placeholder={`Descreva o que você precisa. Exemplo para ${modelType}:\n\n${
-                      modelType === "bebidas"
-                        ? "Preciso controlar bebidas do meu bar, com categorias (cerveja, vinho, destilado), marcas, tamanhos, preços de custo e venda, estoque atual e mínimo."
-                        : modelType === "produtos"
-                        ? "Controle de produtos de uma loja de roupas, com SKU, categoria, marca, preço de custo, preço de venda, estoque e fornecedor."
-                        : "Gestão de clientes com nome, email, telefone, CPF, endereço, data de cadastro, total gasto e categoria de cliente."
-                    }`}
+                    placeholder={`Descreva o que você precisa${
+                      selectedCategory ? ` na sua planilha de ${selectedCategory.name.toLowerCase()}` : ""
+                    }.\n\nQuanto mais detalhes (colunas desejadas, tipo de negócio, o que quer acompanhar), melhor a IA monta a estrutura.`}
                     className="mt-1.5"
                     rows={4}
                   />
@@ -321,7 +340,7 @@ export default function AIGenerator() {
                 <div className="space-y-4 text-sm">
                   <div>
                     <span className="text-muted-foreground">Tipo:</span>
-                    <p className="font-medium capitalize mt-1">{modelType}</p>
+                    <p className="font-medium capitalize mt-1">{selectedCategory?.name ?? "-"}</p>
                   </div>
                   <div>
                     <span className="text-muted-foreground">Nome:</span>
