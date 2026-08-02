@@ -45,3 +45,15 @@
   saldo negativo. Trocado por db.consumeAIUse() com UPDATE atômico GREATEST(aiUsesLeft-1, 0).
 - updateUserPlan agora grava aiUsesResetAt ao aplicar a cota do novo plano.
 - tsc 0 erros, vitest 10/10.
+
+## Item 7 — CONCLUÍDO (reformulação do painel admin — itens 5 e 6 do prompt)
+- Novo shell: menu lateral retrátil (framer-motion) substituindo as 8 abas horizontais,
+  header sticky com título/descrição da seção + refresh com spinner, nav em pílulas no mobile.
+- Busca rápida ⌘K / Ctrl+K (cmdk): pula pra qualquer seção ou abre detalhes de um usuário
+  pelo nome/e-mail/ID.
+- Dashboard: 8 KPIs com ícone (inclui usuários online, assinaturas ativas, créditos de IA)
+  + 2 gráficos recharts (pizza de assinaturas por plano, barras de novos usuários em 6 meses).
+- Usuários: busca por nome/e-mail/ID, filtro por plano, filtro por status (ativo/suspenso/admin),
+  ordenação (recentes/antigos/nome/mais planilhas), contador "X de Y" e botão limpar.
+- Arquivos novos: client/src/components/admin/{AdminNav,AdminCommandPalette,AdminOverviewCharts}.tsx
+- tsc 0 erros, build de produção OK, vitest 10/10.

@@ -5,13 +5,16 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tabs, TabsContent } from "@/components/ui/tabs";
+import { AdminSidebar, AdminMobileNav, ADMIN_SECTIONS } from "@/components/admin/AdminNav";
+import AdminCommandPalette from "@/components/admin/AdminCommandPalette";
+import AdminOverviewCharts from "@/components/admin/AdminOverviewCharts";
 import {
   LayoutDashboard, Users, FileSpreadsheet, Settings,
   ShieldAlert, Loader2, AlertCircle, RefreshCw, Key, Mail,
   Crown, Dice1, Trophy, UserCheck, UserX, Ban, Eye,
   ArrowUpRight, ArrowDownRight, Sparkles, Gift, Zap, DollarSign, Save,
-  FolderKanban, Palette, Plus, Pencil, Trash2, X
+  FolderKanban, Palette, Plus, Pencil, Trash2, X, Search, Filter, Activity, TrendingUp, CreditCard
 } from "lucide-react";
 import DashboardLayout from "@/components/DashboardLayout";
 import PlanVerifiedBadge from "@/components/PlanVerifiedBadge";
@@ -144,6 +147,17 @@ export default function Admin() {
   const [selectedUser, setSelectedUser] = useState<UserInfo | null>(null);
   const [showUserDialog, setShowUserDialog] = useState(false);
 
+  // Shell do painel: seção ativa, menu lateral retrátil e busca rápida (⌘K)
+  const [section, setSection] = useState<string>("overview");
+  const [navCollapsed, setNavCollapsed] = useState(false);
+  const [commandOpen, setCommandOpen] = useState(false);
+
+  // Filtros inteligentes da lista de usuários
+  const [userSearch, setUserSearch] = useState("");
+  const [userPlanFilter, setUserPlanFilter] = useState<string>("all");
+  const [userStatusFilter, setUserStatusFilter] = useState<string>("all");
+  const [userSort, setUserSort] = useState<string>("recent");
+
   // Verificar autorização inicial (sessão normal com role/email admin).
   // O cookie admin_key é httpOnly por segurança, então não dá pra checar via
   // document.cookie no navegador — em vez disso, perguntamos ao servidor.
@@ -265,6 +279,57 @@ export default function Admin() {
     enabled: isAuthorized,
     retry: false,
   });
+
+  const allUsers = (usersQuery.data ?? []) as UserInfo[];
+  const allPlansList = (statsQuery.data?.allPlans ?? []) as any[];
+
+  /** Métricas derivadas que o backend ainda não devolve prontas. */
+  const onlineUsers = allUsers.filter((u) => {
+    const last = new Date(u.lastSignedIn).getTime();
+    return Number.isFinite(last) && Date.now() - last < 15 * 60 * 1000;
+  }).length;
+
+  const activeSubscriptions = allUsers.filter((u) => {
+    const planInfo = allPlansList.find((p) => p.code === u.plan);
+    const isPaid = planInfo ? parseFloat(planInfo.priceMonthly || "0") > 0 : false;
+    const notExpired = !u.planExpiresAt || new Date(u.planExpiresAt).getTime() > Date.now();
+    return isPaid && notExpired && !u.suspended;
+  }).length;
+
+  const aiCreditsLeft = allUsers.reduce((sum, u) => sum + (u.aiUsesLeft ?? 0), 0);
+
+  /** Busca + filtros inteligentes + ordenação da lista de usuários. */
+  const filteredUsers = allUsers
+    .filter((u) => {
+      const q = userSearch.trim().toLowerCase();
+      const matchesSearch =
+        !q ||
+        (u.name || "").toLowerCase().includes(q) ||
+        (u.email || "").toLowerCase().includes(q) ||
+        String(u.id) === q;
+      const matchesPlan = userPlanFilter === "all" || u.plan === userPlanFilter;
+      const matchesStatus =
+        userStatusFilter === "all" ||
+        (userStatusFilter === "active" && !u.suspended) ||
+        (userStatusFilter === "suspended" && u.suspended) ||
+        (userStatusFilter === "admin" && u.role === "admin");
+      return matchesSearch && matchesPlan && matchesStatus;
+    })
+    .sort((a, b) => {
+      if (userSort === "name") return (a.name || a.email || "").localeCompare(b.name || b.email || "");
+      if (userSort === "sheets") return b.sheetsGenerated - a.sheetsGenerated;
+      if (userSort === "oldest") return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+    });
+
+  /** Abre os detalhes de um usuário a partir da busca rápida (⌘K). */
+  const openUserFromSearch = (userId: number) => {
+    const found = allUsers.find((u) => u.id === userId);
+    if (!found) return;
+    setSection("users");
+    setSelectedUser(found);
+    setShowUserDialog(true);
+  };
 
   const adminsQuery = trpc.admin.listAdmins.useQuery(undefined, {
     enabled: isAuthorized,
@@ -648,56 +713,58 @@ export default function Admin() {
     );
   }
 
+  const activeSection = ADMIN_SECTIONS.find((s) => s.value === section) ?? ADMIN_SECTIONS[0];
+
   return (
     <DashboardLayout>
-      <div className="space-y-8">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-bold tracking-tight">Administração</h1>
-            <p className="text-muted-foreground">Gerencie usuários, modelos, pagamentos e mais.</p>
-          </div>
-          <div className="flex gap-2">
-            <Button variant="outline" size="sm" onClick={() => { usersQuery.refetch(); statsQuery.refetch(); }}>
-              <RefreshCw className="w-4 h-4 mr-2" />
-              Atualizar
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => logoutMutation.mutate()}
-            >
-              Sair do Painel
-            </Button>
-          </div>
-        </div>
+      <AdminCommandPalette
+        open={commandOpen}
+        onOpenChange={setCommandOpen}
+        users={allUsers}
+        onSelectSection={setSection}
+        onSelectUser={openUserFromSearch}
+      />
 
-        <Tabs defaultValue="overview" className="space-y-6">
-          <TabsList className="bg-muted/50 p-1 flex-wrap">
-            <TabsTrigger value="overview" className="gap-2">
-              <LayoutDashboard className="h-4 w-4" /> Visão Geral
-            </TabsTrigger>
-            <TabsTrigger value="users" className="gap-2">
-              <Users className="h-4 w-4" /> Usuários
-            </TabsTrigger>
-            <TabsTrigger value="templates" className="gap-2">
-              <FileSpreadsheet className="h-4 w-4" /> Modelos
-            </TabsTrigger>
-            <TabsTrigger value="plans" className="gap-2">
-              <DollarSign className="h-4 w-4" /> Planos e Preços
-            </TabsTrigger>
-            <TabsTrigger value="categories" className="gap-2">
-              <FolderKanban className="h-4 w-4" /> Categorias
-            </TabsTrigger>
-            <TabsTrigger value="colors" className="gap-2">
-              <Palette className="h-4 w-4" /> Cores
-            </TabsTrigger>
-            <TabsTrigger value="draw" className="gap-2">
-              <Dice1 className="h-4 w-4" /> Sorteio
-            </TabsTrigger>
-            <TabsTrigger value="admins" className="gap-2">
-              <ShieldAlert className="h-4 w-4" /> Administradores
-            </TabsTrigger>
-          </TabsList>
+      <div className="flex gap-5 items-start">
+        <AdminSidebar
+          section={section}
+          onSectionChange={setSection}
+          collapsed={navCollapsed}
+          onToggleCollapsed={() => setNavCollapsed((v) => !v)}
+          onOpenSearch={() => setCommandOpen(true)}
+        />
+
+        <div className="flex-1 min-w-0 space-y-6">
+          <div className="sticky top-0 z-20 -mx-1 px-1 py-3 bg-background/80 backdrop-blur border-b border-border/40 flex flex-wrap items-center justify-between gap-3">
+            <div className="min-w-0">
+              <h1 className="text-2xl md:text-3xl font-bold tracking-tight flex items-center gap-2 truncate">
+                <activeSection.icon className="w-6 h-6 text-primary shrink-0" />
+                {activeSection.label}
+              </h1>
+              <p className="text-muted-foreground text-sm truncate">{activeSection.description}</p>
+            </div>
+            <div className="flex gap-2">
+              <Button variant="outline" size="sm" className="md:hidden" onClick={() => setCommandOpen(true)}>
+                <Search className="w-4 h-4" />
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => { usersQuery.refetch(); statsQuery.refetch(); }}
+                disabled={usersQuery.isFetching || statsQuery.isFetching}
+              >
+                <RefreshCw className={`w-4 h-4 mr-2 ${usersQuery.isFetching || statsQuery.isFetching ? "animate-spin" : ""}`} />
+                Atualizar
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => logoutMutation.mutate()}>
+                Sair do Painel
+              </Button>
+            </div>
+          </div>
+
+          <AdminMobileNav section={section} onSectionChange={setSection} />
+
+        <Tabs value={section} onValueChange={setSection} className="space-y-6">
 
           {/* ==================== VISÃO GERAL ==================== */}
           <TabsContent value="overview" className="space-y-6">
@@ -709,32 +776,36 @@ export default function Admin() {
               </div>
             ) : statsQuery.data ? (
               <>
-                <div className="grid grid-cols-1 md:grid-cols-6 gap-4">
-                  <Card className="p-6">
-                    <p className="text-sm text-muted-foreground">Total de Usuários</p>
-                    <p className="text-3xl font-bold">{statsQuery.data.totalUsers}</p>
-                  </Card>
-                  <Card className="p-6">
-                    <p className="text-sm text-muted-foreground">Planilhas Geradas</p>
-                    <p className="text-3xl font-bold">{statsQuery.data.totalSheets}</p>
-                  </Card>
-                  <Card className="p-6">
-                    <p className="text-sm text-muted-foreground">Modelos Ativos</p>
-                    <p className="text-3xl font-bold">{statsQuery.data.totalTemplates}</p>
-                  </Card>
-                  <Card className="p-6">
-                    <p className="text-sm text-muted-foreground">Receita Estimada</p>
-                    <p className="text-3xl font-bold text-primary">R$ {statsQuery.data.monthlyRevenue.toFixed(2)}</p>
-                  </Card>
-                  <Card className="p-6">
-                    <p className="text-sm text-muted-foreground">Acessos ao Site</p>
-                    <p className="text-3xl font-bold">{statsQuery.data.totalPageViews || 0}</p>
-                  </Card>
-                  <Card className="p-6">
-                    <p className="text-sm text-muted-foreground">Vendas Concluídas</p>
-                    <p className="text-3xl font-bold text-green-600">{statsQuery.data.completedSales || 0}</p>
-                  </Card>
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                  {[
+                    { label: "Usuários cadastrados", value: statsQuery.data.totalUsers, icon: Users, tone: "" },
+                    { label: "Usuários online", value: onlineUsers, icon: Activity, tone: "text-green-600", hint: "ativos nos últimos 15 min" },
+                    { label: "Receita mensal", value: `R$ ${statsQuery.data.monthlyRevenue.toFixed(2)}`, icon: DollarSign, tone: "text-primary" },
+                    { label: "Assinaturas ativas", value: activeSubscriptions, icon: CreditCard, tone: "" },
+                    { label: "Planilhas geradas", value: statsQuery.data.totalSheets, icon: FileSpreadsheet, tone: "" },
+                    { label: "Créditos de IA disponíveis", value: aiCreditsLeft, icon: Sparkles, tone: "", hint: "somados entre todos os usuários" },
+                    { label: "Acessos ao site", value: statsQuery.data.totalPageViews || 0, icon: TrendingUp, tone: "" },
+                    { label: "Vendas concluídas", value: statsQuery.data.completedSales || 0, icon: Trophy, tone: "text-green-600" },
+                  ].map((kpi) => {
+                    const Icon = kpi.icon;
+                    return (
+                      <Card key={kpi.label} className="p-5 transition-colors hover:border-primary/30">
+                        <div className="flex items-start justify-between gap-2">
+                          <p className="text-xs md:text-sm text-muted-foreground leading-tight">{kpi.label}</p>
+                          <Icon className="w-4 h-4 text-muted-foreground shrink-0" />
+                        </div>
+                        <p className={`text-2xl md:text-3xl font-bold mt-2 ${kpi.tone}`}>{kpi.value}</p>
+                        {kpi.hint && <p className="text-[11px] text-muted-foreground mt-1">{kpi.hint}</p>}
+                      </Card>
+                    );
+                  })}
                 </div>
+
+                <AdminOverviewCharts
+                  users={allUsers}
+                  plans={allPlansList}
+                  planCounts={statsQuery.data.planCounts as Record<string, number>}
+                />
 
                 {/* Resumo de planos */}
                 <Card className="p-6">
@@ -804,8 +875,64 @@ export default function Admin() {
                   Usuários Cadastrados
                 </h3>
                 <Badge variant="outline">
-                  {usersQuery.data?.length || 0} usuários
+                  {filteredUsers.length} de {allUsers.length} usuários
                 </Badge>
+              </div>
+
+              {/* Busca + filtros inteligentes */}
+              <div className="flex flex-col md:flex-row gap-2 mb-4">
+                <div className="relative flex-1 min-w-0">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    placeholder="Buscar por nome, e-mail ou ID..."
+                    className="pl-9"
+                    value={userSearch}
+                    onChange={(e) => setUserSearch(e.target.value)}
+                  />
+                </div>
+                <Select value={userPlanFilter} onValueChange={setUserPlanFilter}>
+                  <SelectTrigger className="md:w-[170px]">
+                    <Filter className="w-3.5 h-3.5 mr-1.5 text-muted-foreground" />
+                    <SelectValue placeholder="Plano" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todos os planos</SelectItem>
+                    {allPlansList.map((p: any) => (
+                      <SelectItem key={p.code} value={p.code}>{p.name || p.code}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Select value={userStatusFilter} onValueChange={setUserStatusFilter}>
+                  <SelectTrigger className="md:w-[150px]">
+                    <SelectValue placeholder="Status" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todos</SelectItem>
+                    <SelectItem value="active">Ativos</SelectItem>
+                    <SelectItem value="suspended">Suspensos</SelectItem>
+                    <SelectItem value="admin">Administradores</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Select value={userSort} onValueChange={setUserSort}>
+                  <SelectTrigger className="md:w-[175px]">
+                    <SelectValue placeholder="Ordenar" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="recent">Mais recentes</SelectItem>
+                    <SelectItem value="oldest">Mais antigos</SelectItem>
+                    <SelectItem value="name">Nome (A-Z)</SelectItem>
+                    <SelectItem value="sheets">Mais planilhas</SelectItem>
+                  </SelectContent>
+                </Select>
+                {(userSearch || userPlanFilter !== "all" || userStatusFilter !== "all") && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => { setUserSearch(""); setUserPlanFilter("all"); setUserStatusFilter("all"); }}
+                  >
+                    <X className="w-4 h-4 mr-1" /> Limpar
+                  </Button>
+                )}
               </div>
 
               {usersQuery.isLoading ? (
@@ -814,8 +941,10 @@ export default function Admin() {
                     <div key={i} className="h-12 bg-muted/30 rounded animate-pulse" />
                   ))}
                 </div>
-              ) : usersQuery.data?.length === 0 ? (
-                <p className="text-center text-muted-foreground py-8">Nenhum usuário cadastrado ainda.</p>
+              ) : filteredUsers.length === 0 ? (
+                <p className="text-center text-muted-foreground py-8">
+                  {allUsers.length === 0 ? "Nenhum usuário cadastrado ainda." : "Nenhum usuário corresponde aos filtros."}
+                </p>
               ) : (
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
@@ -831,7 +960,7 @@ export default function Admin() {
                       </tr>
                     </thead>
                     <tbody>
-                      {usersQuery.data?.map((u: UserInfo) => {
+                      {filteredUsers.map((u: UserInfo) => {
                         const planInfo = statsQuery.data?.allPlans?.find((p: any) => p.code === u.plan);
                         const planBadge = u.plan === "elite"
                           ? "bg-gold-gradient text-black"
@@ -1506,6 +1635,7 @@ export default function Admin() {
             </Card>
           </TabsContent>
         </Tabs>
+        </div>
       </div>
 
       {/* ==================== MODAL: Upgrade Manual ==================== */}
