@@ -96,6 +96,14 @@ export const appRouter = router({
       startOfMonth.setHours(0, 0, 0, 0);
       const sheetsGeneratedThisMonth = await db.countGeneratedSheetsSince(user.id, startOfMonth);
 
+      // Renova a cota de IA quando vira o mês (antes o saldo nunca era reposto).
+      const aiUsesLeft = await db.refreshMonthlyAIUses(
+        user.id,
+        user.aiUsesLeft ?? 0,
+        plan?.maxAiUses ?? 0,
+        (user as { aiUsesResetAt?: Date | null }).aiUsesResetAt ?? null,
+      );
+
       return {
         userId: user.id,
         userName: user.name || user.email || "Usuário",
@@ -109,7 +117,7 @@ export const appRouter = router({
         templatesUnlocked: availableTemplates.length,
         totalTemplates: templates.length,
         themesUnlocked: plan?.maxThemes ?? 0,
-        aiUsesLeft: user.aiUsesLeft ?? 0,
+        aiUsesLeft,
         maxAiUses: plan?.maxAiUses ?? 0,
         customLogo: plan?.customLogo ?? false,
         hasWatermark: plan?.hasWatermark ?? true,
@@ -150,7 +158,15 @@ export const appRouter = router({
       if (plan.maxAiUses === 0) {
         throw new Error("Seu plano nao inclui acesso a geracoes com IA. Faca upgrade para um plano superior!");
       }
-      if (plan.maxAiUses > 0 && user.aiUsesLeft <= 0) {
+      // Renova a cota mensal antes de validar o saldo: sem isso o usuario ficava
+      // travado para sempre depois de gastar os usos do primeiro mes.
+      const aiUsesLeft = await db.refreshMonthlyAIUses(
+        user.id,
+        user.aiUsesLeft ?? 0,
+        plan.maxAiUses,
+        (user as { aiUsesResetAt?: Date | null }).aiUsesResetAt ?? null,
+      );
+      if (plan.maxAiUses > 0 && aiUsesLeft <= 0) {
         throw new Error("Voce atingiu o limite de geracoes com IA do seu plano. Faca upgrade ou aguarde o proximo mes!");
       }
       const category = await db.getCategoryById(input.categoryId);
@@ -186,7 +202,9 @@ export const appRouter = router({
         fileKey: key,
       });
       if (plan.maxAiUses > 0) {
-        await db.updateUserAIUses(ctx.user.id, user.aiUsesLeft - 1);
+        // Desconto atomico no banco: evita corrida entre geracoes simultaneas
+        // e nunca deixa o saldo ficar negativo.
+        await db.consumeAIUse(ctx.user.id);
       }
       await db.incrementSheetsGenerated(ctx.user.id);
       return {

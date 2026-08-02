@@ -121,6 +121,7 @@ export async function getAllUsers() {
       suspended: users.suspended,
       sheetsGenerated: users.sheetsGenerated,
       aiUsesLeft: users.aiUsesLeft,
+      aiUsesResetAt: users.aiUsesResetAt,
       createdAt: users.createdAt,
       updatedAt: users.updatedAt,
       lastSignedIn: users.lastSignedIn,
@@ -141,6 +142,8 @@ export async function updateUserPlan(userId: number, plan: string, planExpiresAt
   const updateData: any = {
     plan,
     aiUsesLeft,
+    // Marca a renovação: a cota do novo plano vale para o mês corrente.
+    aiUsesResetAt: new Date(),
     updatedAt: new Date(),
   };
   // Só definir planExpiresAt se foi fornecido (pode ser null para downgrade)
@@ -202,6 +205,56 @@ export async function updateUserAIUses(userId: number, aiUsesLeft: number) {
   const db = await getDb();
   if (!db) return;
   await db.update(users).set({ aiUsesLeft, updatedAt: new Date() }).where(eq(users.id, userId));
+}
+
+/**
+ * Consome 1 uso de IA de forma atômica no banco, evitando condição de corrida
+ * (duas gerações simultâneas descontando o mesmo saldo) e impedindo saldo
+ * negativo. Retorna o saldo restante depois do desconto.
+ */
+export async function consumeAIUse(userId: number): Promise<number | undefined> {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db
+    .update(users)
+    .set({
+      aiUsesLeft: sql`GREATEST(${users.aiUsesLeft} - 1, 0)`,
+      updatedAt: new Date(),
+    })
+    .where(eq(users.id, userId))
+    .returning({ aiUsesLeft: users.aiUsesLeft });
+  return result[0]?.aiUsesLeft;
+}
+
+/**
+ * Renova a cota mensal de usos de IA quando o mês virou.
+ * Antes disso o saldo nunca era reposto: quem gastava tudo ficava travado para
+ * sempre, mesmo com a mensagem dizendo "aguarde o próximo mês".
+ * Planos com maxAiUses <= 0 (sem IA ou ilimitado) não são tocados.
+ * Retorna o saldo atualizado.
+ */
+export async function refreshMonthlyAIUses(
+  userId: number,
+  currentUses: number,
+  maxAiUses: number,
+  lastResetAt: Date | null | undefined,
+): Promise<number> {
+  if (maxAiUses <= 0) return currentUses;
+
+  const now = new Date();
+  const sameMonth =
+    lastResetAt instanceof Date &&
+    lastResetAt.getUTCFullYear() === now.getUTCFullYear() &&
+    lastResetAt.getUTCMonth() === now.getUTCMonth();
+  if (sameMonth) return currentUses;
+
+  const db = await getDb();
+  if (!db) return currentUses;
+  await db
+    .update(users)
+    .set({ aiUsesLeft: maxAiUses, aiUsesResetAt: now, updatedAt: now })
+    .where(eq(users.id, userId));
+  return maxAiUses;
 }
 
 export async function deleteUser(userId: number) {

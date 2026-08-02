@@ -36,3 +36,12 @@
 - Baseline de erros ZERADO: InsertPlan exportado em drizzle/schema.ts (corrige db.ts:19 e db.ts:355),
   guard de currentUser em payment.ts, planBadgeClass com fallback em Settings.tsx (TS7053).
 - tsc --noEmit: 0 erros. vitest: 10/10 verdes.
+
+## Item 6 — CONCLUÍDO (cota de IA)
+- BUG: usos de IA nunca renovavam. Mensagem dizia "aguarde o próximo mês" mas nada repunha o saldo.
+  Adicionada coluna users.aiUsesResetAt + db.refreshMonthlyAIUses() chamada em dashboard.overview
+  e em generator.generateWithAI antes da validação de saldo.
+- BUG: desconto `user.aiUsesLeft - 1` era lido de dado possivelmente stale e permitia corrida /
+  saldo negativo. Trocado por db.consumeAIUse() com UPDATE atômico GREATEST(aiUsesLeft-1, 0).
+- updateUserPlan agora grava aiUsesResetAt ao aplicar a cota do novo plano.
+- tsc 0 erros, vitest 10/10.
