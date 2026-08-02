@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useAuth } from "@/_core/hooks/useAuth";
+import PlanVerifiedBadge from "@/components/PlanVerifiedBadge";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 
@@ -17,11 +18,12 @@ export default function Settings() {
     refetchOnWindowFocus: false,
   });
 
-  const planBadgeColor: Record<"free" | "pro" | "elite", string> = {
+  const planBadgeColor: Record<string, string> = {
     free: "bg-muted text-muted-foreground",
     pro: "bg-primary/15 text-primary",
     elite: "bg-gold-gradient text-black",
   };
+  const planBadgeClass = planBadgeColor[overview?.plan ?? "free"] ?? planBadgeColor.free;
 
   return (
     <DashboardLayout>
@@ -44,7 +46,10 @@ export default function Settings() {
           </h3>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <Label htmlFor="name">Nome</Label>
+              <Label htmlFor="name" className="flex items-center gap-1.5">
+                Nome
+                <PlanVerifiedBadge plan={overview?.plan} size={14} />
+              </Label>
               <Input id="name" value={user?.name || ""} disabled className="mt-1.5" />
             </div>
             <div>
@@ -65,7 +70,7 @@ export default function Settings() {
           </h3>
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-3">
-              <Badge className={`${planBadgeColor[overview?.plan || "free"]} font-semibold`}>
+              <Badge className={`${planBadgeClass} font-semibold`}>
                 {overview?.planName || "FREE"}
               </Badge>
               <span className="text-sm text-muted-foreground">

@@ -142,6 +142,8 @@ export const paymentRouter = router({
       const currentUser = await db.getUserById(user.id);
       
       // Se o plano já foi atualizado recentemente, consideramos aprovado
+      if (!currentUser) return { status: "unknown" };
+
       const currentPlanInfo = await db.getPlanByCode(currentUser.plan as string);
       const isPaid = currentPlanInfo && parseFloat(currentPlanInfo.priceMonthly || "0") > 0;
       if (currentUser && isPaid && currentUser.planExpiresAt) {

@@ -169,6 +169,7 @@ export type Category = typeof categories.$inferSelect;
 export type Template = typeof templates.$inferSelect;
 export type GeneratedSheet = typeof generatedSheets.$inferSelect;
 export type Plan = typeof plans.$inferSelect;
+export type InsertPlan = typeof plans.$inferInsert;
 export type SiteSetting = typeof siteSettings.$inferSelect;
 export type PageView = typeof pageViews.$inferSelect;
 export type InsertPageView = typeof pageViews.$inferInsert;

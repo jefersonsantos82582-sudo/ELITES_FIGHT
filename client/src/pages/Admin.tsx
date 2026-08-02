@@ -1386,7 +1386,10 @@ export default function Admin() {
                     <div className="text-center">
                       <Trophy className="w-10 h-10 text-primary mx-auto mb-3" />
                       <p className="text-sm text-muted-foreground mb-1">Vencedor do sorteio:</p>
-                      <p className="text-xl font-bold">{drawResult.name || drawResult.email}</p>
+                      <p className="text-xl font-bold flex items-center justify-center gap-1.5">
+                        {drawResult.name || drawResult.email}
+                        <PlanVerifiedBadge plan={drawResult.plan} size={18} />
+                      </p>
                       <p className="text-sm text-muted-foreground">{drawResult.email}</p>
                       <Badge className={`mt-3 ${drawPlan === "elite" ? "bg-gold-gradient text-black" : "bg-primary/15 text-primary"}`}>
                         {drawPlan.toUpperCase()} - Novo Plano
@@ -1409,7 +1412,10 @@ export default function Admin() {
                               {(w.name || w.email || "?")[0].toUpperCase()}
                             </div>
                             <div>
-                              <p className="text-sm font-medium">{w.name || w.email}</p>
+                              <p className="text-sm font-medium flex items-center gap-1">
+                                {w.name || w.email}
+                                <PlanVerifiedBadge plan={w.plan} size={13} />
+                              </p>
                               <p className="text-xs text-muted-foreground">{w.email}</p>
                             </div>
                           </div>
@@ -1575,7 +1581,10 @@ export default function Admin() {
                   </div>
                 )}
                 <div>
-                  <p className="text-lg font-bold">{selectedUser.name || "Sem nome"}</p>
+                  <p className="text-lg font-bold flex items-center gap-1.5">
+                    {selectedUser.name || "Sem nome"}
+                    <PlanVerifiedBadge plan={selectedUser.plan} size={16} />
+                  </p>
                   <p className="text-sm text-muted-foreground">{selectedUser.email || "Sem email"}</p>
                 </div>
               </div>
