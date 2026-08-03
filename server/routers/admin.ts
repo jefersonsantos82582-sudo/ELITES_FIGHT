@@ -301,9 +301,11 @@ export const adminRouter = router({
         maxTemplates: z.number().default(5),
         maxThemes: z.number().default(5),
         maxAiUses: z.number().default(0),
+        maxSheetsPerMonth: z.number().min(0).default(1),
         unlimitedSheets: z.boolean().default(false),
         hasWatermark: z.boolean().default(true),
         customLogo: z.boolean().default(false),
+        isActive: z.boolean().default(true),
         displayOrder: z.number().default(0),
       })
     )

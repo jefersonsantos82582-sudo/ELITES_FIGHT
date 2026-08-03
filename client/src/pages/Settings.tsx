@@ -74,7 +74,9 @@ export default function Settings() {
                 {overview?.planName || "FREE"}
               </Badge>
               <span className="text-sm text-muted-foreground">
-                {overview?.unlimitedSheets ? "Planilhas ilimitadas" : "1 planilha por mês"}
+                {overview?.unlimitedSheets
+                  ? "Planilhas ilimitadas"
+                  : `${overview?.maxSheetsPerMonth ?? 1} ${(overview?.maxSheetsPerMonth ?? 1) === 1 ? "planilha" : "planilhas"} por mês`}
               </span>
             </div>
             <a href={user?.plan === 'free' ? '/checkout?plan=pro' : '/checkout?plan=elite'}>

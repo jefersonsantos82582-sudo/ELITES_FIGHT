@@ -22,6 +22,7 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
 
 interface ColumnDefUI {
@@ -95,8 +96,26 @@ export default function Admin() {
 
   // Edição de plano/preço
   const [editingPlanCode, setEditingPlanCode] = useState<string | null>(null);
-  const [planForm, setPlanForm] = useState<{ priceMonthly: string; priceYearly: string; maxAiUses: number; maxTemplates: number; description: string }>({
-    priceMonthly: "", priceYearly: "", maxAiUses: 0, maxTemplates: 0, description: "",
+  const [planForm, setPlanForm] = useState<{
+    name: string;
+    priceMonthly: string;
+    priceYearly: string;
+    description: string;
+    maxAiUses: number;
+    maxTemplates: number;
+    maxThemes: number;
+    maxSheetsPerMonth: number;
+    unlimitedSheets: boolean;
+    hasWatermark: boolean;
+    customLogo: boolean;
+    isActive: boolean;
+    displayOrder: number;
+    features: string;
+  }>({
+    name: "", priceMonthly: "", priceYearly: "", description: "",
+    maxAiUses: 0, maxTemplates: 0, maxThemes: 0, maxSheetsPerMonth: 1,
+    unlimitedSheets: false, hasWatermark: true, customLogo: false,
+    isActive: true, displayOrder: 0, features: "",
   });
 
   // Gestão de administradores
@@ -107,7 +126,8 @@ export default function Admin() {
   const [createPlanForm, setCreatePlanForm] = useState({
     code: "", name: "", priceMonthly: "0", priceYearly: "0",
     description: "", maxTemplates: 5, maxThemes: 5, maxAiUses: 0,
-    unlimitedSheets: false, hasWatermark: true, customLogo: false, displayOrder: 0,
+    maxSheetsPerMonth: 1, unlimitedSheets: false, hasWatermark: true,
+    customLogo: false, isActive: true, displayOrder: 0, features: "",
   });
 
   // Modal de upgrade manual
@@ -251,7 +271,8 @@ export default function Admin() {
       setCreatePlanForm({
         code: "", name: "", priceMonthly: "0", priceYearly: "0",
         description: "", maxTemplates: 5, maxThemes: 5, maxAiUses: 0,
-        unlimitedSheets: false, hasWatermark: true, customLogo: false, displayOrder: 0,
+        maxSheetsPerMonth: 1, unlimitedSheets: false, hasWatermark: true,
+        customLogo: false, isActive: true, displayOrder: 0, features: "",
       });
     },
     onError: (err) => {
@@ -1203,11 +1224,20 @@ export default function Admin() {
                               onClick={() => {
                                 setEditingPlanCode(p.code);
                                 setPlanForm({
+                                  name: p.name ?? p.code,
                                   priceMonthly: p.priceMonthly ?? "0",
                                   priceYearly: p.priceYearly ?? "0",
+                                  description: p.description ?? "",
                                   maxAiUses: p.maxAiUses ?? 0,
                                   maxTemplates: p.maxTemplates ?? 0,
-                                  description: p.description ?? "",
+                                  maxThemes: p.maxThemes ?? 0,
+                                  maxSheetsPerMonth: p.maxSheetsPerMonth ?? 1,
+                                  unlimitedSheets: !!p.unlimitedSheets,
+                                  hasWatermark: !!p.hasWatermark,
+                                  customLogo: !!p.customLogo,
+                                  isActive: p.isActive !== false,
+                                  displayOrder: p.displayOrder ?? 0,
+                                  features: Array.isArray(p.features) ? p.features.join("\n") : "",
                                 });
                               }}
                             >
@@ -1219,41 +1249,141 @@ export default function Admin() {
                         {isEditing ? (
                           <div className="space-y-3">
                             <div>
-                              <Label className="text-xs">Preço mensal (R$)</Label>
+                              <Label className="text-xs">Nome exibido</Label>
                               <Input
-                                value={planForm.priceMonthly}
-                                onChange={(e) => setPlanForm(f => ({ ...f, priceMonthly: e.target.value }))}
+                                value={planForm.name}
+                                onChange={(e) => setPlanForm(f => ({ ...f, name: e.target.value }))}
                               />
                             </div>
-                            <div>
-                              <Label className="text-xs">Preço anual (R$)</Label>
-                              <Input
-                                value={planForm.priceYearly}
-                                onChange={(e) => setPlanForm(f => ({ ...f, priceYearly: e.target.value }))}
-                              />
+                            <div className="grid grid-cols-2 gap-2">
+                              <div>
+                                <Label className="text-xs">Preço mensal (R$)</Label>
+                                <Input
+                                  value={planForm.priceMonthly}
+                                  onChange={(e) => setPlanForm(f => ({ ...f, priceMonthly: e.target.value }))}
+                                />
+                              </div>
+                              <div>
+                                <Label className="text-xs">Preço anual (R$)</Label>
+                                <Input
+                                  value={planForm.priceYearly}
+                                  onChange={(e) => setPlanForm(f => ({ ...f, priceYearly: e.target.value }))}
+                                />
+                              </div>
                             </div>
-                            <div>
-                              <Label className="text-xs">Usos de IA por mês</Label>
+
+                            {/* Limite de planilhas: principal benefício do plano */}
+                            <div className="rounded-lg border border-primary/30 bg-primary/5 p-3 space-y-2">
+                              <Label className="text-xs font-semibold text-primary">
+                                Planilhas por mês
+                              </Label>
                               <Input
                                 type="number"
-                                value={planForm.maxAiUses}
-                                onChange={(e) => setPlanForm(f => ({ ...f, maxAiUses: Number(e.target.value) }))}
+                                min={0}
+                                disabled={planForm.unlimitedSheets}
+                                value={planForm.maxSheetsPerMonth}
+                                onChange={(e) => setPlanForm(f => ({ ...f, maxSheetsPerMonth: Math.max(0, Number(e.target.value)) }))}
                               />
+                              <div className="flex items-center justify-between">
+                                <span className="text-xs text-muted-foreground">Planilhas ilimitadas</span>
+                                <Switch
+                                  checked={planForm.unlimitedSheets}
+                                  onCheckedChange={(v) => setPlanForm(f => ({ ...f, unlimitedSheets: v }))}
+                                />
+                              </div>
+                              <p className="text-[11px] text-muted-foreground">
+                                {planForm.unlimitedSheets
+                                  ? "Este plano gera planilhas sem limite."
+                                  : `Este plano libera ${planForm.maxSheetsPerMonth} planilha(s) por mês.`}
+                              </p>
                             </div>
-                            <div>
-                              <Label className="text-xs">Máx. de modelos</Label>
-                              <Input
-                                type="number"
-                                value={planForm.maxTemplates}
-                                onChange={(e) => setPlanForm(f => ({ ...f, maxTemplates: Number(e.target.value) }))}
-                              />
+
+                            <div className="grid grid-cols-3 gap-2">
+                              <div>
+                                <Label className="text-xs">Usos de IA/mês</Label>
+                                <Input
+                                  type="number"
+                                  min={0}
+                                  value={planForm.maxAiUses}
+                                  onChange={(e) => setPlanForm(f => ({ ...f, maxAiUses: Math.max(0, Number(e.target.value)) }))}
+                                />
+                              </div>
+                              <div>
+                                <Label className="text-xs">Máx. modelos</Label>
+                                <Input
+                                  type="number"
+                                  min={0}
+                                  value={planForm.maxTemplates}
+                                  onChange={(e) => setPlanForm(f => ({ ...f, maxTemplates: Math.max(0, Number(e.target.value)) }))}
+                                />
+                              </div>
+                              <div>
+                                <Label className="text-xs">Máx. temas</Label>
+                                <Input
+                                  type="number"
+                                  min={0}
+                                  value={planForm.maxThemes}
+                                  onChange={(e) => setPlanForm(f => ({ ...f, maxThemes: Math.max(0, Number(e.target.value)) }))}
+                                />
+                              </div>
                             </div>
+
                             <div>
                               <Label className="text-xs">Descrição</Label>
                               <Input
                                 value={planForm.description}
                                 onChange={(e) => setPlanForm(f => ({ ...f, description: e.target.value }))}
                               />
+                            </div>
+
+                            <div>
+                              <Label className="text-xs">Benefícios (um por linha)</Label>
+                              <Textarea
+                                rows={4}
+                                value={planForm.features}
+                                placeholder={"Planilhas ilimitadas\nSuporte prioritário"}
+                                onChange={(e) => setPlanForm(f => ({ ...f, features: e.target.value }))}
+                              />
+                              <p className="text-[11px] text-muted-foreground mt-1">
+                                Aparecem na lista de vantagens do plano.
+                              </p>
+                            </div>
+
+                            <div className="space-y-2 rounded-lg border border-border/40 p-3">
+                              <div className="flex items-center justify-between">
+                                <span className="text-xs">Marca d'água nas planilhas</span>
+                                <Switch
+                                  checked={planForm.hasWatermark}
+                                  onCheckedChange={(v) => setPlanForm(f => ({ ...f, hasWatermark: v }))}
+                                />
+                              </div>
+                              <div className="flex items-center justify-between">
+                                <span className="text-xs">Logo personalizado</span>
+                                <Switch
+                                  checked={planForm.customLogo}
+                                  onCheckedChange={(v) => setPlanForm(f => ({ ...f, customLogo: v }))}
+                                />
+                              </div>
+                              <div className="flex items-center justify-between">
+                                <span className="text-xs">Plano ativo (visível para venda)</span>
+                                <Switch
+                                  checked={planForm.isActive}
+                                  onCheckedChange={(v) => setPlanForm(f => ({ ...f, isActive: v }))}
+                                />
+                              </div>
+                            </div>
+
+                            <div>
+                              <Label className="text-xs">Ordem / hierarquia</Label>
+                              <Input
+                                type="number"
+                                min={0}
+                                value={planForm.displayOrder}
+                                onChange={(e) => setPlanForm(f => ({ ...f, displayOrder: Math.max(0, Number(e.target.value)) }))}
+                              />
+                              <p className="text-[11px] text-muted-foreground mt-1">
+                                Quanto maior, mais alto o plano. Define o que cada nível desbloqueia.
+                              </p>
                             </div>
                             <div className="flex gap-2 pt-1">
                               <Button
@@ -1264,11 +1394,23 @@ export default function Admin() {
                                   updatePlanMutation.mutate({
                                     id: p.id,
                                     code: p.code,
+                                    name: planForm.name || p.code,
                                     priceMonthly: planForm.priceMonthly,
                                     priceYearly: planForm.priceYearly,
+                                    description: planForm.description,
+                                    features: planForm.features
+                                      .split("\n")
+                                      .map(line => line.trim())
+                                      .filter(Boolean),
                                     maxAiUses: planForm.maxAiUses,
                                     maxTemplates: planForm.maxTemplates,
-                                    description: planForm.description,
+                                    maxThemes: planForm.maxThemes,
+                                    maxSheetsPerMonth: planForm.maxSheetsPerMonth,
+                                    unlimitedSheets: planForm.unlimitedSheets,
+                                    hasWatermark: planForm.hasWatermark,
+                                    customLogo: planForm.customLogo,
+                                    isActive: planForm.isActive,
+                                    displayOrder: planForm.displayOrder,
                                   });
                                 }}
                               >
@@ -1302,6 +1444,12 @@ export default function Admin() {
                             <p className="text-muted-foreground text-xs">Anual: R$ {Number(p.priceYearly ?? 0).toFixed(2)}</p>
                             <p className="text-muted-foreground text-xs">{p.description || "Sem descrição"}</p>
                             <div className="flex items-center justify-between pt-2 text-xs">
+                              <span className="text-muted-foreground">Planilhas/mês</span>
+                              <span className="font-medium text-primary">
+                                {p.unlimitedSheets ? "Ilimitadas" : (p.maxSheetsPerMonth ?? 1)}
+                              </span>
+                            </div>
+                            <div className="flex items-center justify-between text-xs">
                               <span className="text-muted-foreground">Usos de IA/mês</span>
                               <span className="font-medium">{p.maxAiUses}</span>
                             </div>
@@ -1309,6 +1457,35 @@ export default function Admin() {
                               <span className="text-muted-foreground">Máx. modelos</span>
                               <span className="font-medium">{p.maxTemplates}</span>
                             </div>
+                            <div className="flex items-center justify-between text-xs">
+                              <span className="text-muted-foreground">Máx. temas</span>
+                              <span className="font-medium">{p.maxThemes ?? 0}</span>
+                            </div>
+                            <div className="flex items-center justify-between text-xs">
+                              <span className="text-muted-foreground">Ordem</span>
+                              <span className="font-medium">{p.displayOrder ?? 0}</span>
+                            </div>
+                            <div className="flex flex-wrap gap-1 pt-2">
+                              <Badge variant="outline" className="text-[10px]">
+                                {p.hasWatermark ? "Com marca d'água" : "Sem marca d'água"}
+                              </Badge>
+                              {p.customLogo && <Badge variant="outline" className="text-[10px]">Logo próprio</Badge>}
+                              <Badge
+                                variant="outline"
+                                className={`text-[10px] ${p.isActive === false ? "text-destructive border-destructive/40" : "text-green-600 border-green-600/40"}`}
+                              >
+                                {p.isActive === false ? "Inativo" : "Ativo"}
+                              </Badge>
+                            </div>
+                            {Array.isArray(p.features) && p.features.length > 0 && (
+                              <ul className="pt-2 space-y-1">
+                                {p.features.map((feat: string, i: number) => (
+                                  <li key={i} className="text-[11px] text-muted-foreground flex gap-1.5">
+                                    <span className="text-primary">•</span>{feat}
+                                  </li>
+                                ))}
+                              </ul>
+                            )}
                           </div>
                         )}
                       </Card>
@@ -2112,7 +2289,39 @@ export default function Admin() {
                 />
               </div>
             </div>
-            <div className="flex items-center gap-4 pt-2">
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label className="text-xs">Planilhas por mês</Label>
+                <Input
+                  type="number"
+                  min={0}
+                  className="mt-1.5"
+                  disabled={createPlanForm.unlimitedSheets}
+                  value={createPlanForm.maxSheetsPerMonth}
+                  onChange={(e) => setCreatePlanForm(f => ({ ...f, maxSheetsPerMonth: Math.max(0, Number(e.target.value)) }))}
+                />
+              </div>
+              <div>
+                <Label className="text-xs">Ordem / hierarquia</Label>
+                <Input
+                  type="number"
+                  min={0}
+                  className="mt-1.5"
+                  value={createPlanForm.displayOrder}
+                  onChange={(e) => setCreatePlanForm(f => ({ ...f, displayOrder: Math.max(0, Number(e.target.value)) }))}
+                />
+              </div>
+            </div>
+            <div>
+              <Label className="text-xs">Benefícios (um por linha)</Label>
+              <Textarea
+                rows={3}
+                className="mt-1.5"
+                value={createPlanForm.features}
+                onChange={(e) => setCreatePlanForm(f => ({ ...f, features: e.target.value }))}
+              />
+            </div>
+            <div className="flex flex-wrap items-center gap-4 pt-2">
               <label className="flex items-center gap-2 text-sm">
                 <input
                   type="checkbox"
@@ -2120,6 +2329,14 @@ export default function Admin() {
                   onChange={(e) => setCreatePlanForm(f => ({ ...f, unlimitedSheets: e.target.checked }))}
                 />
                 Planilhas ilimitadas
+              </label>
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={createPlanForm.isActive}
+                  onChange={(e) => setCreatePlanForm(f => ({ ...f, isActive: e.target.checked }))}
+                />
+                Plano ativo
               </label>
               <label className="flex items-center gap-2 text-sm">
                 <input
@@ -2147,7 +2364,10 @@ export default function Admin() {
               onClick={() => {
                 createPlanMutation.mutate({
                   ...createPlanForm,
-                  features: [],
+                  features: createPlanForm.features
+                    .split("\n")
+                    .map(line => line.trim())
+                    .filter(Boolean),
                 });
               }}
             >
