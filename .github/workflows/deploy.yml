@@ -6,11 +6,16 @@ on:
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pages: write
+      id-token: write
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          persist-credentials: true
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
@@ -29,10 +34,9 @@ jobs:
           GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
           GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
       - name: Deploy dist to build-output branch
-        env:
-          GH_TOKEN: ${{ secrets.PERSONAL_TOKEN }}
-          REPO_TOKEN: ${{ secrets.REPO_TOKEN }}
         run: |
+          echo "Listing dist contents..."
+          ls -la dist/
           cd dist
           git init
           git config user.name "github-actions[bot]"
@@ -40,5 +44,5 @@ jobs:
           git add .
           git commit -m "deploy: build output from ${{ github.sha }}"
           git branch -M build-output
-          git remote add origin https://x-access-token:${REPO_TOKEN}@github.com/${{ github.repository }}.git
-          git push --force origin build-output
+          git remote add origin "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git"
+          git push --force origin build-output 2>&1 || echo "DEPLOY FAILED"
