@@ -6,13 +6,12 @@ on:
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
@@ -30,13 +29,14 @@ jobs:
           VITE_MERCADO_PAGO_PUBLIC_KEY: ${{ secrets.VITE_MERCADO_PAGO_PUBLIC_KEY }}
           GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
           GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
-      - name: Deploy to Build Output Branch
-        uses: JamesIves/github-pages-deploy-action@v4
-        with:
-          branch: build-output
-          folder: dist
-          clean: true
-          force: true
-          single-commit: true
-          commit-message: "deploy: build output from main"
-          token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Deploy dist to build-output branch
+        run: |
+          cd dist
+          git init
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add .
+          git commit -m "deploy: build output from ${{ github.sha }}"
+          git branch -M build-output
+          git remote add origin https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git
+          git push --force origin build-output
