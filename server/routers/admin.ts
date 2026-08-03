@@ -100,35 +100,62 @@ export const adminRouter = router({
    * Obter estatísticas gerais
    */
   stats: adminProcedure.query(async () => {
-    const users = await db.getAllUsers();
-    const sheets = await db.getAllGeneratedSheets();
-    const totalPageViews = await db.getPageViewsCount();
-    const uniqueVisitors = await db.getUniqueVisitorsCount();
-    const approvedPayments = await db.getApprovedPaymentsCount();
+    const [
+      totalUsers,
+      totalSheets,
+      totalTemplates,
+      totalPageViews,
+      uniqueVisitors,
+      approvedPayments,
+      allPlans,
+      planCountsArray,
+      onlineUsers,
+      aiCreditsLeft,
+      activeSubscriptions,
+      growthData
+    ] = await Promise.all([
+      db.getUsersCount(),
+      db.getGeneratedSheetsCount(),
+      db.getTemplatesCount(),
+      db.getPageViewsCount(),
+      db.getUniqueVisitorsCount(),
+      db.getApprovedPaymentsCount(),
+      db.getAllPlans(),
+      db.getUserCountsByPlan(),
+      db.getOnlineUsersCount(15),
+      db.getTotalAiCreditsLeft(),
+      db.getActiveSubscriptionsCount(),
+      db.getUserGrowthData(6)
+    ]);
 
-    const allPlans = await db.getAllPlans();
     const planCounts: Record<string, number> = {};
-    for (const p of allPlans) {
-      planCounts[p.code] = users.filter(u => u.plan === p.code).length;
+    for (const item of planCountsArray) {
+      planCounts[item.plan] = item.count;
     }
+
     let monthlyRevenue = 0;
     for (const p of allPlans) {
       const price = parseFloat(p.priceMonthly || "0");
-      if (price > 0 && planCounts[p.code]) {
-        monthlyRevenue += planCounts[p.code] * price;
+      const count = planCounts[p.code] || 0;
+      if (price > 0 && count > 0) {
+        monthlyRevenue += count * price;
       }
     }
 
     return {
-      totalUsers: users.length,
-      totalSheets: sheets.length,
-      totalTemplates: (await db.getAllTemplates()).length,
+      totalUsers,
+      totalSheets,
+      totalTemplates,
       planCounts,
       monthlyRevenue,
       totalPageViews,
       uniqueVisitors,
       completedSales: approvedPayments,
       allPlans,
+      onlineUsers,
+      aiCreditsLeft,
+      activeSubscriptions,
+      growthData,
     };
   }),
 

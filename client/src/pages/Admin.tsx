@@ -299,7 +299,7 @@ export default function Admin() {
   }, [statsQuery.error]);
 
   const usersQuery = trpc.admin.listAllUsers.useQuery(undefined, {
-    enabled: isAuthorized,
+    enabled: isAuthorized && section === "users",
     retry: false,
     refetchOnWindowFocus: false,
   });
@@ -312,20 +312,10 @@ export default function Admin() {
   const allUsers = (usersQuery.data ?? []) as UserInfo[];
   const allPlansList = (statsQuery.data?.allPlans ?? []) as any[];
 
-  /** Métricas derivadas que o backend ainda não devolve prontas. */
-  const onlineUsers = allUsers.filter((u) => {
-    const last = new Date(u.lastSignedIn).getTime();
-    return Number.isFinite(last) && Date.now() - last < 15 * 60 * 1000;
-  }).length;
-
-  const activeSubscriptions = allUsers.filter((u) => {
-    const planInfo = allPlansList.find((p) => p.code === u.plan);
-    const isPaid = planInfo ? parseFloat(planInfo.priceMonthly || "0") > 0 : false;
-    const notExpired = !u.planExpiresAt || new Date(u.planExpiresAt).getTime() > Date.now();
-    return isPaid && notExpired && !u.suspended;
-  }).length;
-
-  const aiCreditsLeft = allUsers.reduce((sum, u) => sum + (u.aiUsesLeft ?? 0), 0);
+  /** Métricas derivadas otimizadas vindas do backend. */
+  const onlineUsers = statsQuery.data?.onlineUsers ?? 0;
+  const activeSubscriptions = statsQuery.data?.activeSubscriptions ?? 0;
+  const aiCreditsLeft = statsQuery.data?.aiCreditsLeft ?? 0;
 
   /** Busca + filtros inteligentes + ordenação da lista de usuários. */
   const filteredUsers = allUsers
@@ -848,9 +838,9 @@ export default function Admin() {
                 </div>
 
                 <AdminOverviewCharts
-                  users={allUsers}
                   plans={allPlansList}
                   planCounts={statsQuery.data.planCounts as Record<string, number>}
+                  growthData={statsQuery.data.growthData}
                 />
 
                 {/* Resumo de planos */}

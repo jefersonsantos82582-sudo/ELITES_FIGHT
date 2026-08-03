@@ -36,10 +36,12 @@ export default function AdminOverviewCharts({
   users,
   plans,
   planCounts,
+  growthData: growthDataProp,
 }: {
-  users: ChartUser[];
+  users?: ChartUser[];
   plans: ChartPlan[];
   planCounts: Record<string, number>;
+  growthData?: { key: string; label: string; novos: number }[];
 }) {
   const planData = useMemo(
     () =>
@@ -50,6 +52,9 @@ export default function AdminOverviewCharts({
   );
 
   const growthData = useMemo(() => {
+    if (growthDataProp) return growthDataProp;
+    if (!users) return [];
+    
     const months: { key: string; label: string; novos: number }[] = [];
     const now = new Date();
     for (let i = 5; i >= 0; i--) {
@@ -68,9 +73,9 @@ export default function AdminOverviewCharts({
       if (bucket) bucket.novos += 1;
     }
     return months;
-  }, [users]);
+  }, [users, growthDataProp]);
 
-  const hasData = planData.length > 0 || users.length > 0;
+  const hasData = planData.length > 0 || growthData.length > 0;
   if (!hasData) return null;
 
   return (

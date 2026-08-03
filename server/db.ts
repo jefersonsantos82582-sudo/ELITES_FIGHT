@@ -131,6 +131,90 @@ export async function getAllUsers() {
     .orderBy(desc(users.createdAt));
 }
 
+export async function getUsersCount(): Promise<number> {
+  const db = await getDb();
+  if (!db) return 0;
+  const result = await db.select({ count: sql<number>`cast(count(*) as integer)` }).from(users);
+  return result[0]?.count || 0;
+}
+
+export async function getOnlineUsersCount(minutes: number = 15): Promise<number> {
+  const db = await getDb();
+  if (!db) return 0;
+  const cutoff = new Date(Date.now() - minutes * 60 * 1000);
+  const result = await db
+    .select({ count: sql<number>`cast(count(*) as integer)` })
+    .from(users)
+    .where(gte(users.lastSignedIn, cutoff));
+  return result[0]?.count || 0;
+}
+
+export async function getTotalAiCreditsLeft(): Promise<number> {
+  const db = await getDb();
+  if (!db) return 0;
+  const result = await db.select({ total: sql<number>`cast(sum(coalesce(${users.aiUsesLeft}, 0)) as integer)` }).from(users);
+  return result[0]?.total || 0;
+}
+
+export async function getActiveSubscriptionsCount(): Promise<number> {
+  const db = await getDb();
+  if (!db) return 0;
+  const now = new Date();
+  
+  // Join users with plans to check if the plan is paid
+  const result = await db
+    .select({ count: sql<number>`cast(count(*) as integer)` })
+    .from(users)
+    .innerJoin(plans, eq(users.plan, plans.code))
+    .where(
+      and(
+        sql`CAST(plans."priceMonthly" AS NUMERIC) > 0`,
+        eq(users.suspended, false),
+        sql`(${users.planExpiresAt} IS NULL OR ${users.planExpiresAt} > ${now})`
+      )
+    );
+  return result[0]?.count || 0;
+}
+
+export async function getUserGrowthData(months: number = 6): Promise<{ key: string; label: string; novos: number }[]> {
+  const db = await getDb();
+  if (!db) return [];
+  
+  const result: { key: string; label: string; novos: number }[] = [];
+  const now = new Date();
+  
+  for (let i = months - 1; i >= 0; i--) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    const startOfMonth = new Date(d.getFullYear(), d.getMonth(), 1);
+    const endOfMonth = new Date(d.getFullYear(), d.getMonth() + 1, 0, 23, 59, 59, 999);
+    
+    const count = await db
+      .select({ count: sql<number>`cast(count(*) as integer)` })
+      .from(users)
+      .where(and(gte(users.createdAt, startOfMonth), lt(users.createdAt, new Date(endOfMonth.getTime() + 1))));
+    
+    result.push({
+      key: `${d.getFullYear()}-${d.getMonth()}`,
+      label: d.toLocaleDateString("pt-BR", { month: "short" }).replace(".", ""),
+      novos: count[0]?.count || 0,
+    });
+  }
+  
+  return result;
+}
+
+export async function getUserCountsByPlan(): Promise<{ plan: string; count: number }[]> {
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select({
+      plan: users.plan,
+      count: sql<number>`cast(count(*) as integer)`,
+    })
+    .from(users)
+    .groupBy(users.plan);
+}
+
 export async function updateUserPlan(userId: number, plan: string, planExpiresAt?: Date) {
   const db = await getDb();
   if (!db) return;
@@ -314,6 +398,13 @@ export async function getAllTemplatesAdmin(): Promise<Template[]> {
   return db.select().from(templates).orderBy(templates.displayOrder);
 }
 
+export async function getTemplatesCount(): Promise<number> {
+  const db = await getDb();
+  if (!db) return 0;
+  const result = await db.select({ count: sql<number>`cast(count(*) as integer)` }).from(templates);
+  return result[0]?.count || 0;
+}
+
 export async function getFeaturedTemplates(): Promise<Template[]> {
   const db = await getDb();
   if (!db) return [];
@@ -382,6 +473,13 @@ export async function getAllGeneratedSheets(): Promise<GeneratedSheet[]> {
   const db = await getDb();
   if (!db) return [];
   return db.select().from(generatedSheets).orderBy(desc(generatedSheets.createdAt));
+}
+
+export async function getGeneratedSheetsCount(): Promise<number> {
+  const db = await getDb();
+  if (!db) return 0;
+  const result = await db.select({ count: sql<number>`cast(count(*) as integer)` }).from(generatedSheets);
+  return result[0]?.count || 0;
 }
 
 // ==================== Plans ====================
