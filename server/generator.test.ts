@@ -40,14 +40,25 @@ vi.mock("./db", () => ({
     isFeatured: false,
     displayOrder: 0,
   }),
-  getPlanByCode: vi.fn().mockResolvedValue({
-    id: 1,
-    code: "free",
-    name: "FREE",
-    unlimitedSheets: false,
-    hasWatermark: true,
-    maxThemes: 5,
-    maxAiUses: 0,
+  // A hierarquia de acesso é decidida pelo displayOrder do plano
+  // (free < pro < elite), então o mock precisa responder por código.
+  getPlanByCode: vi.fn().mockImplementation(async (code: string) => {
+    const plans: Record<string, Record<string, unknown>> = {
+      free: {
+        id: 1, code: "free", name: "FREE", displayOrder: 0,
+        unlimitedSheets: false, hasWatermark: true, maxThemes: 5, maxAiUses: 0,
+        maxSheetsPerMonth: 5,
+      },
+      pro: {
+        id: 2, code: "pro", name: "PRO", displayOrder: 1,
+        unlimitedSheets: true, hasWatermark: false, maxThemes: 20, maxAiUses: 20,
+      },
+      elite: {
+        id: 3, code: "elite", name: "ELITE", displayOrder: 2,
+        unlimitedSheets: true, hasWatermark: false, maxThemes: 999, maxAiUses: -1,
+      },
+    };
+    return plans[code] ?? plans.free;
   }),
   getGeneratedSheetsByUser: vi.fn().mockResolvedValue([]),
   createGeneratedSheet: vi.fn().mockResolvedValue({ id: 1 }),

@@ -94,15 +94,12 @@ export default function Generator() {
     }
   }, [selectedTemplate]);
 
-  const allowedTemplateIds = useMemo(() => {
-    const candidates = (templates || [])
-      .filter((template) => planOrder[userPlan] >= planOrder[template.plan as "free" | "pro" | "elite"])
-      .slice(0, overview?.templatesUnlocked ?? Number.MAX_SAFE_INTEGER);
-    return new Set(candidates.map((template) => template.id));
-  }, [overview?.templatesUnlocked, templates, userPlan]);
-
+  // Hierarquia de planos: FREE < PRO < ELITE. Acesso a um template depende
+  // apenas do plano exigido por ele vs. o plano do usuário — sem cortes
+  // artificiais adicionais (isso causava templates bloqueados mesmo com o
+  // plano correto).
   const hasAccess = selectedTemplate
-    ? planOrder[userPlan] >= planOrder[selectedTemplate.plan as "free" | "pro" | "elite"] && allowedTemplateIds.has(selectedTemplate.id)
+    ? planOrder[userPlan] >= planOrder[selectedTemplate.plan as "free" | "pro" | "elite"]
     : true;
 
   const handleGenerate = () => {
@@ -232,7 +229,7 @@ export default function Generator() {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   {categoryTemplates.map(tpl => {
                     const tplPlan = tpl.plan as "free" | "pro" | "elite";
-                    const canAccess = planOrder[userPlan] >= planOrder[tplPlan] && allowedTemplateIds.has(tpl.id);
+                    const canAccess = planOrder[userPlan] >= planOrder[tplPlan];
                     const isSelected = String(tpl.id) === selectedTemplateId;
                     return (
                       <button

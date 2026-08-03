@@ -3,10 +3,22 @@ import { ENV } from "../_core/env";
 import axios from "axios";
 
 export interface AIGenerationRequest {
-  modelType: "bebidas" | "produtos" | "clientes";
+  /**
+   * Nome da categoria escolhida pelo usuário (carregada do banco de dados).
+   * Antes isso era um enum fixo de 3 valores, o que limitava o gerador com IA
+   * a bebidas/produtos/clientes. Agora aceita qualquer categoria cadastrada.
+   */
+  categoryName: string;
+  /** Descrição da categoria vinda do banco, quando houver (dá mais contexto à IA). */
+  categoryDescription?: string | null;
   description: string;
   customName: string;
   rowCount?: number;
+  /** Cores escolhidas — influenciam o estilo visual sugerido pela IA. */
+  headerColor?: string;
+  accentColor?: string;
+  /** Plano do usuário — planos melhores pedem layouts mais sofisticados. */
+  userPlan?: string;
 }
 
 export interface AIGenerationResponse {
@@ -128,7 +140,62 @@ Retorne APENAS um JSON válido com a seguinte estrutura:
 }
 
 Gere pelo menos 5 linhas de exemplo realistas com dados variados.`,
-};
+} as Record<string, string>;
+
+/** Remove acentos e normaliza para casar com as chaves de MODEL_PROMPTS. */
+function normalizeKey(value: string): string {
+  return value
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .toLowerCase()
+    .trim();
+}
+
+/**
+ * Instruções comuns de formato/qualidade, usadas quando a categoria escolhida
+ * não é uma das que possuem prompt especializado.
+ */
+const GENERIC_FORMAT_INSTRUCTIONS = `Para cada coluna, defina também o campo "type" com um dos valores: "text", "number", "currency", "date" ou "time".
+Use "currency" para colunas de valor monetário, "number" para colunas numéricas que não são dinheiro, "date" para datas e "time" para horários. Isso é obrigatório: colunas monetárias e numéricas SEMPRE precisam de "type" para que os totais sejam calculados automaticamente na planilha.
+
+Retorne APENAS um JSON válido com a seguinte estrutura:
+{
+  "columns": [
+    {"name": "ID", "width": 8, "type": "text"},
+    {"name": "Descrição", "width": 24, "type": "text"},
+    {"name": "Valor", "width": 14, "type": "currency"},
+    {"name": "Quantidade", "width": 12, "type": "number"},
+    {"name": "Data", "width": 14, "type": "date"}
+  ],
+  "sampleRows": [
+    ["1", "Exemplo coerente com a categoria", "1250.00", "3", "2024-07-15"]
+  ]
+}
+
+Gere pelo menos 5 linhas de exemplo realistas e variadas, coerentes com a categoria.`;
+
+/**
+ * Monta o prompt base a partir da categoria escolhida pelo usuário.
+ * Categorias com prompt especializado (bebidas, produtos, clientes) mantêm a
+ * qualidade dos modelos já ajustados; qualquer outra categoria cadastrada no
+ * banco passa a funcionar através de um prompt genérico bem estruturado.
+ */
+function buildCategoryPrompt(request: AIGenerationRequest): string {
+  const key = normalizeKey(request.categoryName || "");
+  const specialized = MODEL_PROMPTS[key];
+  if (specialized) return specialized;
+
+  const categoryContext = request.categoryDescription
+    ? `\nContexto da categoria: ${request.categoryDescription}`
+    : "";
+
+  return `Você é um especialista em criar planilhas profissionais de alto nível em Excel.
+A planilha que você vai estruturar pertence à categoria: "${request.categoryName}".${categoryContext}
+
+Defina o conjunto de colunas mais útil e profissional para essa categoria específica — pense no que um especialista do setor realmente controlaria no dia a dia (identificadores, campos descritivos, valores monetários, quantidades, datas, responsáveis, status, etc.). Não use colunas genéricas demais nem colunas irrelevantes para a categoria.
+
+${GENERIC_FORMAT_INSTRUCTIONS}`;
+}
 
 /**
  * Função para chamar o Google Gemini diretamente via API do Google AI Studio.
@@ -379,8 +446,34 @@ function closeTruncatedJson(str: string): string {
 export async function generateSheetWithAI(
   request: AIGenerationRequest
 ): Promise<AIGenerationResponse> {
-  const prompt = MODEL_PROMPTS[request.modelType];
-  const userMessage = `${prompt}
+  const prompt = buildCategoryPrompt(request);
+  const styleHints: string[] = [];
+  if (request.headerColor) {
+    styleHints.push(
+      `A planilha será renderizada com a cor de cabeçalho ${request.headerColor}${
+        request.accentColor ? ` e cor de destaque ${request.accentColor}` : ""
+      }. Escolha nomes de colunas curtos e legíveis e larguras ("width") coerentes para que o cabeçalho colorido fique visualmente equilibrado.`
+    );
+  } else if (request.accentColor) {
+    styleHints.push(
+      `A planilha usará ${request.accentColor} como cor de destaque. Mantenha nomes de colunas curtos e larguras coerentes.`
+    );
+  }
+  const plan = (request.userPlan || "").toLowerCase();
+  if (plan === "elite") {
+    styleHints.push(
+      "O cliente é assinante ELITE (plano mais alto): entregue a estrutura mais completa e sofisticada possível, com colunas analíticas extras (ex.: margem, status, responsável, observações) e dados de exemplo ricos e realistas."
+    );
+  } else if (plan === "pro") {
+    styleHints.push(
+      "O cliente é assinante PRO: entregue uma estrutura profissional e completa, com colunas de controle além do básico."
+    );
+  }
+  const styleBlock = styleHints.length
+    ? `\n\nContexto adicional de apresentação:\n- ${styleHints.join("\n- ")}`
+    : "";
+
+  const userMessage = `${prompt}${styleBlock}
 
 IMPORTANTE — instrução do cliente tem prioridade sobre a lista de colunas acima:
 A lista de colunas sugerida acima é apenas um PONTO DE PARTIDA. O que o cliente pediu abaixo em "Pedido do cliente" é a fonte da verdade e DEVE ser refletido na estrutura final da planilha:

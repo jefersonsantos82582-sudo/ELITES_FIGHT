@@ -24,6 +24,38 @@ export const appRouter = router({
     }),
   }),
 
+  // ==================== Analytics ====================
+  analytics: router({
+    /**
+     * Registra o acesso de um visitante. Antes disso nada chamava trackPageView,
+     * então o contador de acessos do painel ficava sempre em zero.
+     * O sessionId vem do navegador (localStorage) e identifica a pessoa;
+     * o servidor deduplica visitas repetidas da mesma página.
+     */
+    track: publicProcedure
+      .input(z.object({
+        page: z.string().min(1).max(255),
+        sessionId: z.string().min(1).max(100),
+        referer: z.string().max(500).optional(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        try {
+          const counted = await db.trackPageViewOnce({
+            page: input.page,
+            sessionId: input.sessionId,
+            userId: ctx.user?.id ?? null,
+            userAgent: (ctx.req.headers["user-agent"] as string | undefined)?.slice(0, 500) ?? null,
+            referer: input.referer?.slice(0, 500) ?? null,
+          });
+          return { counted };
+        } catch (err) {
+          // Analytics nunca pode derrubar a navegação do usuário.
+          console.error("[analytics] falha ao registrar acesso:", err);
+          return { counted: false };
+        }
+      }),
+  }),
+
   // ==================== Categories ====================
   categories: router({
     list: publicProcedure.query(async () => {
@@ -83,16 +115,26 @@ export const appRouter = router({
       const templates = await db.getAllTemplates();
       const allPlans = await db.getAllPlans();
       const userPlanDisplayOrder = plan?.displayOrder ?? 0;
-      const availableTemplates = templates
-        .filter((template) => {
-          const tplPlan = allPlans.find(p => p.code === (template.plan as string));
-          return userPlanDisplayOrder >= (tplPlan?.displayOrder ?? 0);
-        })
-        .slice(0, plan?.maxTemplates ?? 0);
+      // Hierarquia de planos: FREE < PRO < ELITE. Um usuário tem acesso a
+      // TODOS os templates do seu nível e dos níveis abaixo — nunca aplicar
+      // um corte artificial (ex.: maxTemplates) sobre essa lista, senão
+      // usuários pagantes ficam com templates do próprio plano bloqueados.
+      const availableTemplates = templates.filter((template) => {
+        const tplPlan = allPlans.find(p => p.code === (template.plan as string));
+        return userPlanDisplayOrder >= (tplPlan?.displayOrder ?? 0);
+      });
       const startOfMonth = new Date();
       startOfMonth.setDate(1);
       startOfMonth.setHours(0, 0, 0, 0);
       const sheetsGeneratedThisMonth = await db.countGeneratedSheetsSince(user.id, startOfMonth);
+
+      // Renova a cota de IA quando vira o mês (antes o saldo nunca era reposto).
+      const aiUsesLeft = await db.refreshMonthlyAIUses(
+        user.id,
+        user.aiUsesLeft ?? 0,
+        plan?.maxAiUses ?? 0,
+        (user as { aiUsesResetAt?: Date | null }).aiUsesResetAt ?? null,
+      );
 
       return {
         userId: user.id,
@@ -107,7 +149,7 @@ export const appRouter = router({
         templatesUnlocked: availableTemplates.length,
         totalTemplates: templates.length,
         themesUnlocked: plan?.maxThemes ?? 0,
-        aiUsesLeft: user.aiUsesLeft ?? 0,
+        aiUsesLeft,
         maxAiUses: plan?.maxAiUses ?? 0,
         customLogo: plan?.customLogo ?? false,
         hasWatermark: plan?.hasWatermark ?? true,
@@ -128,7 +170,9 @@ export const appRouter = router({
   // ==================== Generator ====================
   generator: router({
     generateWithAI: protectedProcedure.input(z.object({
-      modelType: z.enum(["bebidas", "produtos", "clientes"]),
+      // Antes era um enum fixo de 3 valores (bebidas/produtos/clientes), o que
+      // limitava o gerador com IA. Agora aceita qualquer categoria cadastrada.
+      categoryId: z.number(),
       description: z.string().min(1).max(500),
       customName: z.string().min(1).max(200),
       headerColor: z.string().regex(/^#[0-9A-Fa-f]{6}$/, "Cor de cabecalho invalida").optional(),
@@ -146,16 +190,32 @@ export const appRouter = router({
       if (plan.maxAiUses === 0) {
         throw new Error("Seu plano nao inclui acesso a geracoes com IA. Faca upgrade para um plano superior!");
       }
-      if (plan.maxAiUses > 0 && user.aiUsesLeft <= 0) {
+      // Renova a cota mensal antes de validar o saldo: sem isso o usuario ficava
+      // travado para sempre depois de gastar os usos do primeiro mes.
+      const aiUsesLeft = await db.refreshMonthlyAIUses(
+        user.id,
+        user.aiUsesLeft ?? 0,
+        plan.maxAiUses,
+        (user as { aiUsesResetAt?: Date | null }).aiUsesResetAt ?? null,
+      );
+      if (plan.maxAiUses > 0 && aiUsesLeft <= 0) {
         throw new Error("Voce atingiu o limite de geracoes com IA do seu plano. Faca upgrade ou aguarde o proximo mes!");
       }
+      const category = await db.getCategoryById(input.categoryId);
+      if (!category) {
+        throw new Error("Categoria nao encontrada. Escolha uma categoria valida.");
+      }
       const aiResult = await generateSheetWithAI({
-        modelType: input.modelType,
+        categoryName: category.name,
+        categoryDescription: category.description ?? null,
         description: input.description,
         customName: input.customName,
+        headerColor: input.headerColor,
+        accentColor: input.accentColor,
+        userPlan: userPlan,
       });
       const buffer = await generateSpreadsheet({
-        templateName: `${input.modelType.charAt(0).toUpperCase() + input.modelType.slice(1)} (IA)`,
+        templateName: `${category.name} (IA)`,
         customName: input.customName,
         columns: aiResult.columns as ColumnDef[],
         sampleRows: aiResult.sampleRows,
@@ -168,13 +228,15 @@ export const appRouter = router({
       const record = await db.createGeneratedSheet({
         userId: ctx.user.id,
         templateId: 0,
-        templateName: `${input.modelType} (IA)`,
+        templateName: `${category.name} (IA)`,
         customName: input.customName,
         fileUrl: url,
         fileKey: key,
       });
       if (plan.maxAiUses > 0) {
-        await db.updateUserAIUses(ctx.user.id, user.aiUsesLeft - 1);
+        // Desconto atomico no banco: evita corrida entre geracoes simultaneas
+        // e nunca deixa o saldo ficar negativo.
+        await db.consumeAIUse(ctx.user.id);
       }
       await db.incrementSheetsGenerated(ctx.user.id);
       return {
@@ -216,19 +278,10 @@ export const appRouter = router({
         throw new Error("Não foi possível localizar as permissões do seu plano.");
       }
 
-      const allTemplates = await db.getAllTemplates();
-      const allPlans = await db.getAllPlans();
-      const planMap = new Map(allPlans.map(p => [p.code, p]));
-      
-      const allowedTemplates = allTemplates
-        .filter((item) => {
-          const itemPlanInfo = planMap.get(item.plan as string);
-          return (userPlanInfo?.displayOrder ?? 0) >= (itemPlanInfo?.displayOrder ?? 0);
-        })
-        .slice(0, plan.maxTemplates);
-      if (!allowedTemplates.some((item) => item.id === template.id)) {
-        throw new Error("Este modelo não está incluído no limite atual do seu plano. Faça upgrade para liberá-lo.");
-      }
+      // A checagem de hierarquia já foi feita acima (displayOrder do plano do
+      // usuário vs. displayOrder do plano exigido pelo template). Não aplicar
+      // nenhum corte adicional (ex.: maxTemplates) aqui — isso bloqueava
+      // templates que o usuário tinha permissão de plano para usar.
 
       // Free-plan allowance resets at the start of each calendar month.
       if (!plan.unlimitedSheets) {

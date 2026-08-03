@@ -103,6 +103,7 @@ export const adminRouter = router({
     const users = await db.getAllUsers();
     const sheets = await db.getAllGeneratedSheets();
     const totalPageViews = await db.getPageViewsCount();
+    const uniqueVisitors = await db.getUniqueVisitorsCount();
     const approvedPayments = await db.getApprovedPaymentsCount();
 
     const allPlans = await db.getAllPlans();
@@ -125,6 +126,7 @@ export const adminRouter = router({
       planCounts,
       monthlyRevenue,
       totalPageViews,
+      uniqueVisitors,
       completedSales: approvedPayments,
       allPlans,
     };
@@ -299,9 +301,11 @@ export const adminRouter = router({
         maxTemplates: z.number().default(5),
         maxThemes: z.number().default(5),
         maxAiUses: z.number().default(0),
+        maxSheetsPerMonth: z.number().min(0).default(1),
         unlimitedSheets: z.boolean().default(false),
         hasWatermark: z.boolean().default(true),
         customLogo: z.boolean().default(false),
+        isActive: z.boolean().default(true),
         displayOrder: z.number().default(0),
       })
     )

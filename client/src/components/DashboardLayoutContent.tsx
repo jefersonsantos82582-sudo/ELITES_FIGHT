@@ -1,4 +1,5 @@
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
+import PlanVerifiedBadge from "@/components/PlanVerifiedBadge";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -166,8 +167,9 @@ export function DashboardLayoutContent({
                     </AvatarFallback>
                   </Avatar>
                   <div className="flex-1 min-w-0 group-data-[collapsible=icon]:hidden">
-                    <p className="text-sm font-medium truncate leading-none">
-                      {user?.name || "-"}
+                    <p className="text-sm font-medium truncate leading-none flex items-center gap-1">
+                      <span className="truncate">{user?.name || "-"}</span>
+                      {user?.plan && <PlanVerifiedBadge plan={user.plan} size={14} />}
                     </p>
                     <p className="text-xs text-muted-foreground truncate mt-1.5">
                       {user?.email || "-"}

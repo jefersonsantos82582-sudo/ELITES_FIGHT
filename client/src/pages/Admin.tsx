@@ -5,19 +5,24 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tabs, TabsContent } from "@/components/ui/tabs";
+import { AdminSidebar, AdminMobileNav, ADMIN_SECTIONS } from "@/components/admin/AdminNav";
+import AdminCommandPalette from "@/components/admin/AdminCommandPalette";
+import AdminOverviewCharts from "@/components/admin/AdminOverviewCharts";
 import {
   LayoutDashboard, Users, FileSpreadsheet, Settings,
   ShieldAlert, Loader2, AlertCircle, RefreshCw, Key, Mail,
   Crown, Dice1, Trophy, UserCheck, UserX, Ban, Eye,
   ArrowUpRight, ArrowDownRight, Sparkles, Gift, Zap, DollarSign, Save,
-  FolderKanban, Palette, Plus, Pencil, Trash2, X
+  FolderKanban, Palette, Plus, Pencil, Trash2, X, Search, Filter, Activity, TrendingUp, CreditCard
 } from "lucide-react";
 import DashboardLayout from "@/components/DashboardLayout";
+import PlanVerifiedBadge from "@/components/PlanVerifiedBadge";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
 
 interface ColumnDefUI {
@@ -91,8 +96,26 @@ export default function Admin() {
 
   // Edição de plano/preço
   const [editingPlanCode, setEditingPlanCode] = useState<string | null>(null);
-  const [planForm, setPlanForm] = useState<{ priceMonthly: string; priceYearly: string; maxAiUses: number; maxTemplates: number; description: string }>({
-    priceMonthly: "", priceYearly: "", maxAiUses: 0, maxTemplates: 0, description: "",
+  const [planForm, setPlanForm] = useState<{
+    name: string;
+    priceMonthly: string;
+    priceYearly: string;
+    description: string;
+    maxAiUses: number;
+    maxTemplates: number;
+    maxThemes: number;
+    maxSheetsPerMonth: number;
+    unlimitedSheets: boolean;
+    hasWatermark: boolean;
+    customLogo: boolean;
+    isActive: boolean;
+    displayOrder: number;
+    features: string;
+  }>({
+    name: "", priceMonthly: "", priceYearly: "", description: "",
+    maxAiUses: 0, maxTemplates: 0, maxThemes: 0, maxSheetsPerMonth: 1,
+    unlimitedSheets: false, hasWatermark: true, customLogo: false,
+    isActive: true, displayOrder: 0, features: "",
   });
 
   // Gestão de administradores
@@ -103,7 +126,8 @@ export default function Admin() {
   const [createPlanForm, setCreatePlanForm] = useState({
     code: "", name: "", priceMonthly: "0", priceYearly: "0",
     description: "", maxTemplates: 5, maxThemes: 5, maxAiUses: 0,
-    unlimitedSheets: false, hasWatermark: true, customLogo: false, displayOrder: 0,
+    maxSheetsPerMonth: 1, unlimitedSheets: false, hasWatermark: true,
+    customLogo: false, isActive: true, displayOrder: 0, features: "",
   });
 
   // Modal de upgrade manual
@@ -142,6 +166,17 @@ export default function Admin() {
   // Modal de detalhes do usuário
   const [selectedUser, setSelectedUser] = useState<UserInfo | null>(null);
   const [showUserDialog, setShowUserDialog] = useState(false);
+
+  // Shell do painel: seção ativa, menu lateral retrátil e busca rápida (⌘K)
+  const [section, setSection] = useState<string>("overview");
+  const [navCollapsed, setNavCollapsed] = useState(false);
+  const [commandOpen, setCommandOpen] = useState(false);
+
+  // Filtros inteligentes da lista de usuários
+  const [userSearch, setUserSearch] = useState("");
+  const [userPlanFilter, setUserPlanFilter] = useState<string>("all");
+  const [userStatusFilter, setUserStatusFilter] = useState<string>("all");
+  const [userSort, setUserSort] = useState<string>("recent");
 
   // Verificar autorização inicial (sessão normal com role/email admin).
   // O cookie admin_key é httpOnly por segurança, então não dá pra checar via
@@ -236,7 +271,8 @@ export default function Admin() {
       setCreatePlanForm({
         code: "", name: "", priceMonthly: "0", priceYearly: "0",
         description: "", maxTemplates: 5, maxThemes: 5, maxAiUses: 0,
-        unlimitedSheets: false, hasWatermark: true, customLogo: false, displayOrder: 0,
+        maxSheetsPerMonth: 1, unlimitedSheets: false, hasWatermark: true,
+        customLogo: false, isActive: true, displayOrder: 0, features: "",
       });
     },
     onError: (err) => {
@@ -272,6 +308,57 @@ export default function Admin() {
     enabled: isAuthorized,
     retry: false,
   });
+
+  const allUsers = (usersQuery.data ?? []) as UserInfo[];
+  const allPlansList = (statsQuery.data?.allPlans ?? []) as any[];
+
+  /** Métricas derivadas que o backend ainda não devolve prontas. */
+  const onlineUsers = allUsers.filter((u) => {
+    const last = new Date(u.lastSignedIn).getTime();
+    return Number.isFinite(last) && Date.now() - last < 15 * 60 * 1000;
+  }).length;
+
+  const activeSubscriptions = allUsers.filter((u) => {
+    const planInfo = allPlansList.find((p) => p.code === u.plan);
+    const isPaid = planInfo ? parseFloat(planInfo.priceMonthly || "0") > 0 : false;
+    const notExpired = !u.planExpiresAt || new Date(u.planExpiresAt).getTime() > Date.now();
+    return isPaid && notExpired && !u.suspended;
+  }).length;
+
+  const aiCreditsLeft = allUsers.reduce((sum, u) => sum + (u.aiUsesLeft ?? 0), 0);
+
+  /** Busca + filtros inteligentes + ordenação da lista de usuários. */
+  const filteredUsers = allUsers
+    .filter((u) => {
+      const q = userSearch.trim().toLowerCase();
+      const matchesSearch =
+        !q ||
+        (u.name || "").toLowerCase().includes(q) ||
+        (u.email || "").toLowerCase().includes(q) ||
+        String(u.id) === q;
+      const matchesPlan = userPlanFilter === "all" || u.plan === userPlanFilter;
+      const matchesStatus =
+        userStatusFilter === "all" ||
+        (userStatusFilter === "active" && !u.suspended) ||
+        (userStatusFilter === "suspended" && u.suspended) ||
+        (userStatusFilter === "admin" && u.role === "admin");
+      return matchesSearch && matchesPlan && matchesStatus;
+    })
+    .sort((a, b) => {
+      if (userSort === "name") return (a.name || a.email || "").localeCompare(b.name || b.email || "");
+      if (userSort === "sheets") return b.sheetsGenerated - a.sheetsGenerated;
+      if (userSort === "oldest") return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+    });
+
+  /** Abre os detalhes de um usuário a partir da busca rápida (⌘K). */
+  const openUserFromSearch = (userId: number) => {
+    const found = allUsers.find((u) => u.id === userId);
+    if (!found) return;
+    setSection("users");
+    setSelectedUser(found);
+    setShowUserDialog(true);
+  };
 
   const adminsQuery = trpc.admin.listAdmins.useQuery(undefined, {
     enabled: isAuthorized,
@@ -671,56 +758,58 @@ export default function Admin() {
     );
   }
 
+  const activeSection = ADMIN_SECTIONS.find((s) => s.value === section) ?? ADMIN_SECTIONS[0];
+
   return (
     <DashboardLayout>
-      <div className="space-y-8">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-bold tracking-tight">Administração</h1>
-            <p className="text-muted-foreground">Gerencie usuários, modelos, pagamentos e mais.</p>
-          </div>
-          <div className="flex gap-2">
-            <Button variant="outline" size="sm" onClick={() => { usersQuery.refetch(); statsQuery.refetch(); }}>
-              <RefreshCw className="w-4 h-4 mr-2" />
-              Atualizar
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => logoutMutation.mutate()}
-            >
-              Sair do Painel
-            </Button>
-          </div>
-        </div>
+      <AdminCommandPalette
+        open={commandOpen}
+        onOpenChange={setCommandOpen}
+        users={allUsers}
+        onSelectSection={setSection}
+        onSelectUser={openUserFromSearch}
+      />
 
-        <Tabs defaultValue="overview" className="space-y-6">
-          <TabsList className="bg-muted/50 p-1 flex-wrap">
-            <TabsTrigger value="overview" className="gap-2">
-              <LayoutDashboard className="h-4 w-4" /> Visão Geral
-            </TabsTrigger>
-            <TabsTrigger value="users" className="gap-2">
-              <Users className="h-4 w-4" /> Usuários
-            </TabsTrigger>
-            <TabsTrigger value="templates" className="gap-2">
-              <FileSpreadsheet className="h-4 w-4" /> Modelos
-            </TabsTrigger>
-            <TabsTrigger value="plans" className="gap-2">
-              <DollarSign className="h-4 w-4" /> Planos e Preços
-            </TabsTrigger>
-            <TabsTrigger value="categories" className="gap-2">
-              <FolderKanban className="h-4 w-4" /> Categorias
-            </TabsTrigger>
-            <TabsTrigger value="colors" className="gap-2">
-              <Palette className="h-4 w-4" /> Cores
-            </TabsTrigger>
-            <TabsTrigger value="draw" className="gap-2">
-              <Dice1 className="h-4 w-4" /> Sorteio
-            </TabsTrigger>
-            <TabsTrigger value="admins" className="gap-2">
-              <ShieldAlert className="h-4 w-4" /> Administradores
-            </TabsTrigger>
-          </TabsList>
+      <div className="flex gap-5 items-start">
+        <AdminSidebar
+          section={section}
+          onSectionChange={setSection}
+          collapsed={navCollapsed}
+          onToggleCollapsed={() => setNavCollapsed((v) => !v)}
+          onOpenSearch={() => setCommandOpen(true)}
+        />
+
+        <div className="flex-1 min-w-0 space-y-6">
+          <div className="sticky top-0 z-20 -mx-1 px-1 py-3 bg-background/80 backdrop-blur border-b border-border/40 flex flex-wrap items-center justify-between gap-3">
+            <div className="min-w-0">
+              <h1 className="text-2xl md:text-3xl font-bold tracking-tight flex items-center gap-2 truncate">
+                <activeSection.icon className="w-6 h-6 text-primary shrink-0" />
+                {activeSection.label}
+              </h1>
+              <p className="text-muted-foreground text-sm truncate">{activeSection.description}</p>
+            </div>
+            <div className="flex gap-2">
+              <Button variant="outline" size="sm" className="md:hidden" onClick={() => setCommandOpen(true)}>
+                <Search className="w-4 h-4" />
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => { usersQuery.refetch(); statsQuery.refetch(); }}
+                disabled={usersQuery.isFetching || statsQuery.isFetching}
+              >
+                <RefreshCw className={`w-4 h-4 mr-2 ${usersQuery.isFetching || statsQuery.isFetching ? "animate-spin" : ""}`} />
+                Atualizar
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => logoutMutation.mutate()}>
+                Sair do Painel
+              </Button>
+            </div>
+          </div>
+
+          <AdminMobileNav section={section} onSectionChange={setSection} />
+
+        <Tabs value={section} onValueChange={setSection} className="space-y-6">
 
           {/* ==================== VISÃO GERAL ==================== */}
           <TabsContent value="overview" className="space-y-6">
@@ -732,32 +821,37 @@ export default function Admin() {
               </div>
             ) : statsQuery.data ? (
               <>
-                <div className="grid grid-cols-1 md:grid-cols-6 gap-4">
-                  <Card className="p-6">
-                    <p className="text-sm text-muted-foreground">Total de Usuários</p>
-                    <p className="text-3xl font-bold">{statsQuery.data.totalUsers || 0}</p>
-                  </Card>
-                  <Card className="p-6">
-                    <p className="text-sm text-muted-foreground">Planilhas Geradas</p>
-                    <p className="text-3xl font-bold">{statsQuery.data.totalSheets || 0}</p>
-                  </Card>
-                  <Card className="p-6">
-                    <p className="text-sm text-muted-foreground">Modelos Ativos</p>
-                    <p className="text-3xl font-bold">{statsQuery.data.totalTemplates || 0}</p>
-                  </Card>
-                  <Card className="p-6">
-                    <p className="text-sm text-muted-foreground">Receita Estimada</p>
-                    <p className="text-3xl font-bold text-primary">R$ {(Number(statsQuery.data.monthlyRevenue) || 0).toFixed(2)}</p>
-                  </Card>
-                  <Card className="p-6">
-                    <p className="text-sm text-muted-foreground">Acessos ao Site</p>
-                    <p className="text-3xl font-bold">{statsQuery.data.totalPageViews || 0}</p>
-                  </Card>
-                  <Card className="p-6">
-                    <p className="text-sm text-muted-foreground">Vendas Concluídas</p>
-                    <p className="text-3xl font-bold text-green-600">{statsQuery.data.completedSales || 0}</p>
-                  </Card>
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                  {[
+                    { label: "Usuários cadastrados", value: statsQuery.data.totalUsers, icon: Users, tone: "" },
+                    { label: "Usuários online", value: onlineUsers, icon: Activity, tone: "text-green-600", hint: "ativos nos últimos 15 min" },
+                    { label: "Receita mensal", value: `R$ ${statsQuery.data.monthlyRevenue.toFixed(2)}`, icon: DollarSign, tone: "text-primary" },
+                    { label: "Assinaturas ativas", value: activeSubscriptions, icon: CreditCard, tone: "" },
+                    { label: "Planilhas geradas", value: statsQuery.data.totalSheets, icon: FileSpreadsheet, tone: "" },
+                    { label: "Créditos de IA disponíveis", value: aiCreditsLeft, icon: Sparkles, tone: "", hint: "somados entre todos os usuários" },
+                    { label: "Visitantes únicos", value: statsQuery.data.uniqueVisitors || 0, icon: Eye, tone: "", hint: "pessoas diferentes que entraram no site" },
+                    { label: "Acessos ao site", value: statsQuery.data.totalPageViews || 0, icon: TrendingUp, tone: "", hint: "total de páginas abertas" },
+                    { label: "Vendas concluídas", value: statsQuery.data.completedSales || 0, icon: Trophy, tone: "text-green-600" },
+                  ].map((kpi) => {
+                    const Icon = kpi.icon;
+                    return (
+                      <Card key={kpi.label} className="p-5 transition-colors hover:border-primary/30">
+                        <div className="flex items-start justify-between gap-2">
+                          <p className="text-xs md:text-sm text-muted-foreground leading-tight">{kpi.label}</p>
+                          <Icon className="w-4 h-4 text-muted-foreground shrink-0" />
+                        </div>
+                        <p className={`text-2xl md:text-3xl font-bold mt-2 ${kpi.tone}`}>{kpi.value}</p>
+                        {kpi.hint && <p className="text-[11px] text-muted-foreground mt-1">{kpi.hint}</p>}
+                      </Card>
+                    );
+                  })}
                 </div>
+
+                <AdminOverviewCharts
+                  users={allUsers}
+                  plans={allPlansList}
+                  planCounts={statsQuery.data.planCounts as Record<string, number>}
+                />
 
                 {/* Resumo de planos */}
                 <Card className="p-6">
@@ -827,8 +921,64 @@ export default function Admin() {
                   Usuários Cadastrados
                 </h3>
                 <Badge variant="outline">
-                  {usersQuery.data?.length || 0} usuários
+                  {filteredUsers.length} de {allUsers.length} usuários
                 </Badge>
+              </div>
+
+              {/* Busca + filtros inteligentes */}
+              <div className="flex flex-col md:flex-row gap-2 mb-4">
+                <div className="relative flex-1 min-w-0">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    placeholder="Buscar por nome, e-mail ou ID..."
+                    className="pl-9"
+                    value={userSearch}
+                    onChange={(e) => setUserSearch(e.target.value)}
+                  />
+                </div>
+                <Select value={userPlanFilter} onValueChange={setUserPlanFilter}>
+                  <SelectTrigger className="md:w-[170px]">
+                    <Filter className="w-3.5 h-3.5 mr-1.5 text-muted-foreground" />
+                    <SelectValue placeholder="Plano" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todos os planos</SelectItem>
+                    {allPlansList.map((p: any) => (
+                      <SelectItem key={p.code} value={p.code}>{p.name || p.code}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Select value={userStatusFilter} onValueChange={setUserStatusFilter}>
+                  <SelectTrigger className="md:w-[150px]">
+                    <SelectValue placeholder="Status" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todos</SelectItem>
+                    <SelectItem value="active">Ativos</SelectItem>
+                    <SelectItem value="suspended">Suspensos</SelectItem>
+                    <SelectItem value="admin">Administradores</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Select value={userSort} onValueChange={setUserSort}>
+                  <SelectTrigger className="md:w-[175px]">
+                    <SelectValue placeholder="Ordenar" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="recent">Mais recentes</SelectItem>
+                    <SelectItem value="oldest">Mais antigos</SelectItem>
+                    <SelectItem value="name">Nome (A-Z)</SelectItem>
+                    <SelectItem value="sheets">Mais planilhas</SelectItem>
+                  </SelectContent>
+                </Select>
+                {(userSearch || userPlanFilter !== "all" || userStatusFilter !== "all") && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => { setUserSearch(""); setUserPlanFilter("all"); setUserStatusFilter("all"); }}
+                  >
+                    <X className="w-4 h-4 mr-1" /> Limpar
+                  </Button>
+                )}
               </div>
 
               {usersQuery.isLoading ? (
@@ -837,8 +987,10 @@ export default function Admin() {
                     <div key={i} className="h-12 bg-muted/30 rounded animate-pulse" />
                   ))}
                 </div>
-              ) : usersQuery.data?.length === 0 ? (
-                <p className="text-center text-muted-foreground py-8">Nenhum usuário cadastrado ainda.</p>
+              ) : filteredUsers.length === 0 ? (
+                <p className="text-center text-muted-foreground py-8">
+                  {allUsers.length === 0 ? "Nenhum usuário cadastrado ainda." : "Nenhum usuário corresponde aos filtros."}
+                </p>
               ) : (
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
@@ -854,7 +1006,7 @@ export default function Admin() {
                       </tr>
                     </thead>
                     <tbody>
-                      {usersQuery.data?.map((u: UserInfo) => {
+                      {filteredUsers.map((u: UserInfo) => {
                         const planInfo = statsQuery.data?.allPlans?.find((p: any) => p.code === u.plan);
                         const planBadge = u.plan === "elite"
                           ? "bg-gold-gradient text-black"
@@ -873,7 +1025,10 @@ export default function Admin() {
                                     {(u.name || u.email || "?")[0].toUpperCase()}
                                   </div>
                                 )}
-                                <span className="font-medium truncate max-w-[120px]">{u.name || "Sem nome"}</span>
+                                <span className="font-medium truncate max-w-[120px] flex items-center gap-1">
+                                  {u.name || "Sem nome"}
+                                  <PlanVerifiedBadge plan={u.plan} size={13} />
+                                </span>
                               </div>
                             </td>
                             <td className="p-3 text-muted-foreground truncate max-w-[150px]">{u.email || "-"}</td>
@@ -1093,11 +1248,20 @@ export default function Admin() {
                               onClick={() => {
                                 setEditingPlanCode(p.code);
                                 setPlanForm({
+                                  name: p.name ?? p.code,
                                   priceMonthly: p.priceMonthly ?? "0",
                                   priceYearly: p.priceYearly ?? "0",
+                                  description: p.description ?? "",
                                   maxAiUses: p.maxAiUses ?? 0,
                                   maxTemplates: p.maxTemplates ?? 0,
-                                  description: p.description ?? "",
+                                  maxThemes: p.maxThemes ?? 0,
+                                  maxSheetsPerMonth: p.maxSheetsPerMonth ?? 1,
+                                  unlimitedSheets: !!p.unlimitedSheets,
+                                  hasWatermark: !!p.hasWatermark,
+                                  customLogo: !!p.customLogo,
+                                  isActive: p.isActive !== false,
+                                  displayOrder: p.displayOrder ?? 0,
+                                  features: Array.isArray(p.features) ? p.features.join("\n") : "",
                                 });
                               }}
                             >
@@ -1109,41 +1273,141 @@ export default function Admin() {
                         {isEditing ? (
                           <div className="space-y-3">
                             <div>
-                              <Label className="text-xs">Preço mensal (R$)</Label>
+                              <Label className="text-xs">Nome exibido</Label>
                               <Input
-                                value={planForm.priceMonthly}
-                                onChange={(e) => setPlanForm(f => ({ ...f, priceMonthly: e.target.value }))}
+                                value={planForm.name}
+                                onChange={(e) => setPlanForm(f => ({ ...f, name: e.target.value }))}
                               />
                             </div>
-                            <div>
-                              <Label className="text-xs">Preço anual (R$)</Label>
-                              <Input
-                                value={planForm.priceYearly}
-                                onChange={(e) => setPlanForm(f => ({ ...f, priceYearly: e.target.value }))}
-                              />
+                            <div className="grid grid-cols-2 gap-2">
+                              <div>
+                                <Label className="text-xs">Preço mensal (R$)</Label>
+                                <Input
+                                  value={planForm.priceMonthly}
+                                  onChange={(e) => setPlanForm(f => ({ ...f, priceMonthly: e.target.value }))}
+                                />
+                              </div>
+                              <div>
+                                <Label className="text-xs">Preço anual (R$)</Label>
+                                <Input
+                                  value={planForm.priceYearly}
+                                  onChange={(e) => setPlanForm(f => ({ ...f, priceYearly: e.target.value }))}
+                                />
+                              </div>
                             </div>
-                            <div>
-                              <Label className="text-xs">Usos de IA por mês</Label>
+
+                            {/* Limite de planilhas: principal benefício do plano */}
+                            <div className="rounded-lg border border-primary/30 bg-primary/5 p-3 space-y-2">
+                              <Label className="text-xs font-semibold text-primary">
+                                Planilhas por mês
+                              </Label>
                               <Input
                                 type="number"
-                                value={planForm.maxAiUses}
-                                onChange={(e) => setPlanForm(f => ({ ...f, maxAiUses: Number(e.target.value) }))}
+                                min={0}
+                                disabled={planForm.unlimitedSheets}
+                                value={planForm.maxSheetsPerMonth}
+                                onChange={(e) => setPlanForm(f => ({ ...f, maxSheetsPerMonth: Math.max(0, Number(e.target.value)) }))}
                               />
+                              <div className="flex items-center justify-between">
+                                <span className="text-xs text-muted-foreground">Planilhas ilimitadas</span>
+                                <Switch
+                                  checked={planForm.unlimitedSheets}
+                                  onCheckedChange={(v) => setPlanForm(f => ({ ...f, unlimitedSheets: v }))}
+                                />
+                              </div>
+                              <p className="text-[11px] text-muted-foreground">
+                                {planForm.unlimitedSheets
+                                  ? "Este plano gera planilhas sem limite."
+                                  : `Este plano libera ${planForm.maxSheetsPerMonth} planilha(s) por mês.`}
+                              </p>
                             </div>
-                            <div>
-                              <Label className="text-xs">Máx. de modelos</Label>
-                              <Input
-                                type="number"
-                                value={planForm.maxTemplates}
-                                onChange={(e) => setPlanForm(f => ({ ...f, maxTemplates: Number(e.target.value) }))}
-                              />
+
+                            <div className="grid grid-cols-3 gap-2">
+                              <div>
+                                <Label className="text-xs">Usos de IA/mês</Label>
+                                <Input
+                                  type="number"
+                                  min={0}
+                                  value={planForm.maxAiUses}
+                                  onChange={(e) => setPlanForm(f => ({ ...f, maxAiUses: Math.max(0, Number(e.target.value)) }))}
+                                />
+                              </div>
+                              <div>
+                                <Label className="text-xs">Máx. modelos</Label>
+                                <Input
+                                  type="number"
+                                  min={0}
+                                  value={planForm.maxTemplates}
+                                  onChange={(e) => setPlanForm(f => ({ ...f, maxTemplates: Math.max(0, Number(e.target.value)) }))}
+                                />
+                              </div>
+                              <div>
+                                <Label className="text-xs">Máx. temas</Label>
+                                <Input
+                                  type="number"
+                                  min={0}
+                                  value={planForm.maxThemes}
+                                  onChange={(e) => setPlanForm(f => ({ ...f, maxThemes: Math.max(0, Number(e.target.value)) }))}
+                                />
+                              </div>
                             </div>
+
                             <div>
                               <Label className="text-xs">Descrição</Label>
                               <Input
                                 value={planForm.description}
                                 onChange={(e) => setPlanForm(f => ({ ...f, description: e.target.value }))}
                               />
+                            </div>
+
+                            <div>
+                              <Label className="text-xs">Benefícios (um por linha)</Label>
+                              <Textarea
+                                rows={4}
+                                value={planForm.features}
+                                placeholder={"Planilhas ilimitadas\nSuporte prioritário"}
+                                onChange={(e) => setPlanForm(f => ({ ...f, features: e.target.value }))}
+                              />
+                              <p className="text-[11px] text-muted-foreground mt-1">
+                                Aparecem na lista de vantagens do plano.
+                              </p>
+                            </div>
+
+                            <div className="space-y-2 rounded-lg border border-border/40 p-3">
+                              <div className="flex items-center justify-between">
+                                <span className="text-xs">Marca d'água nas planilhas</span>
+                                <Switch
+                                  checked={planForm.hasWatermark}
+                                  onCheckedChange={(v) => setPlanForm(f => ({ ...f, hasWatermark: v }))}
+                                />
+                              </div>
+                              <div className="flex items-center justify-between">
+                                <span className="text-xs">Logo personalizado</span>
+                                <Switch
+                                  checked={planForm.customLogo}
+                                  onCheckedChange={(v) => setPlanForm(f => ({ ...f, customLogo: v }))}
+                                />
+                              </div>
+                              <div className="flex items-center justify-between">
+                                <span className="text-xs">Plano ativo (visível para venda)</span>
+                                <Switch
+                                  checked={planForm.isActive}
+                                  onCheckedChange={(v) => setPlanForm(f => ({ ...f, isActive: v }))}
+                                />
+                              </div>
+                            </div>
+
+                            <div>
+                              <Label className="text-xs">Ordem / hierarquia</Label>
+                              <Input
+                                type="number"
+                                min={0}
+                                value={planForm.displayOrder}
+                                onChange={(e) => setPlanForm(f => ({ ...f, displayOrder: Math.max(0, Number(e.target.value)) }))}
+                              />
+                              <p className="text-[11px] text-muted-foreground mt-1">
+                                Quanto maior, mais alto o plano. Define o que cada nível desbloqueia.
+                              </p>
                             </div>
                             <div className="flex gap-2 pt-1">
                               <Button
@@ -1154,11 +1418,23 @@ export default function Admin() {
                                   updatePlanMutation.mutate({
                                     id: p.id,
                                     code: p.code,
+                                    name: planForm.name || p.code,
                                     priceMonthly: planForm.priceMonthly,
                                     priceYearly: planForm.priceYearly,
+                                    description: planForm.description,
+                                    features: planForm.features
+                                      .split("\n")
+                                      .map(line => line.trim())
+                                      .filter(Boolean),
                                     maxAiUses: planForm.maxAiUses,
                                     maxTemplates: planForm.maxTemplates,
-                                    description: planForm.description,
+                                    maxThemes: planForm.maxThemes,
+                                    maxSheetsPerMonth: planForm.maxSheetsPerMonth,
+                                    unlimitedSheets: planForm.unlimitedSheets,
+                                    hasWatermark: planForm.hasWatermark,
+                                    customLogo: planForm.customLogo,
+                                    isActive: planForm.isActive,
+                                    displayOrder: planForm.displayOrder,
                                   });
                                 }}
                               >
@@ -1192,6 +1468,12 @@ export default function Admin() {
                             <p className="text-muted-foreground text-xs">Anual: R$ {Number(p.priceYearly ?? 0).toFixed(2)}</p>
                             <p className="text-muted-foreground text-xs">{p.description || "Sem descrição"}</p>
                             <div className="flex items-center justify-between pt-2 text-xs">
+                              <span className="text-muted-foreground">Planilhas/mês</span>
+                              <span className="font-medium text-primary">
+                                {p.unlimitedSheets ? "Ilimitadas" : (p.maxSheetsPerMonth ?? 1)}
+                              </span>
+                            </div>
+                            <div className="flex items-center justify-between text-xs">
                               <span className="text-muted-foreground">Usos de IA/mês</span>
                               <span className="font-medium">{p.maxAiUses}</span>
                             </div>
@@ -1199,6 +1481,35 @@ export default function Admin() {
                               <span className="text-muted-foreground">Máx. modelos</span>
                               <span className="font-medium">{p.maxTemplates}</span>
                             </div>
+                            <div className="flex items-center justify-between text-xs">
+                              <span className="text-muted-foreground">Máx. temas</span>
+                              <span className="font-medium">{p.maxThemes ?? 0}</span>
+                            </div>
+                            <div className="flex items-center justify-between text-xs">
+                              <span className="text-muted-foreground">Ordem</span>
+                              <span className="font-medium">{p.displayOrder ?? 0}</span>
+                            </div>
+                            <div className="flex flex-wrap gap-1 pt-2">
+                              <Badge variant="outline" className="text-[10px]">
+                                {p.hasWatermark ? "Com marca d'água" : "Sem marca d'água"}
+                              </Badge>
+                              {p.customLogo && <Badge variant="outline" className="text-[10px]">Logo próprio</Badge>}
+                              <Badge
+                                variant="outline"
+                                className={`text-[10px] ${p.isActive === false ? "text-destructive border-destructive/40" : "text-green-600 border-green-600/40"}`}
+                              >
+                                {p.isActive === false ? "Inativo" : "Ativo"}
+                              </Badge>
+                            </div>
+                            {Array.isArray(p.features) && p.features.length > 0 && (
+                              <ul className="pt-2 space-y-1">
+                                {p.features.map((feat: string, i: number) => (
+                                  <li key={i} className="text-[11px] text-muted-foreground flex gap-1.5">
+                                    <span className="text-primary">•</span>{feat}
+                                  </li>
+                                ))}
+                              </ul>
+                            )}
                           </div>
                         )}
                       </Card>
@@ -1406,7 +1717,10 @@ export default function Admin() {
                     <div className="text-center">
                       <Trophy className="w-10 h-10 text-primary mx-auto mb-3" />
                       <p className="text-sm text-muted-foreground mb-1">Vencedor do sorteio:</p>
-                      <p className="text-xl font-bold">{drawResult.name || drawResult.email}</p>
+                      <p className="text-xl font-bold flex items-center justify-center gap-1.5">
+                        {drawResult.name || drawResult.email}
+                        <PlanVerifiedBadge plan={drawResult.plan} size={18} />
+                      </p>
                       <p className="text-sm text-muted-foreground">{drawResult.email}</p>
                       <Badge className={`mt-3 ${drawPlan === "elite" ? "bg-gold-gradient text-black" : "bg-primary/15 text-primary"}`}>
                         {drawPlan.toUpperCase()} - Novo Plano
@@ -1429,7 +1743,10 @@ export default function Admin() {
                               {(w.name || w.email || "?")[0].toUpperCase()}
                             </div>
                             <div>
-                              <p className="text-sm font-medium">{w.name || w.email}</p>
+                              <p className="text-sm font-medium flex items-center gap-1">
+                                {w.name || w.email}
+                                <PlanVerifiedBadge plan={w.plan} size={13} />
+                              </p>
                               <p className="text-xs text-muted-foreground">{w.email}</p>
                             </div>
                           </div>
@@ -1520,6 +1837,7 @@ export default function Admin() {
             </Card>
           </TabsContent>
         </Tabs>
+        </div>
       </div>
 
       {/* ==================== MODAL: Upgrade Manual ==================== */}
@@ -1595,7 +1913,10 @@ export default function Admin() {
                   </div>
                 )}
                 <div>
-                  <p className="text-lg font-bold">{selectedUser.name || "Sem nome"}</p>
+                  <p className="text-lg font-bold flex items-center gap-1.5">
+                    {selectedUser.name || "Sem nome"}
+                    <PlanVerifiedBadge plan={selectedUser.plan} size={16} />
+                  </p>
                   <p className="text-sm text-muted-foreground">{selectedUser.email || "Sem email"}</p>
                 </div>
               </div>
@@ -1992,7 +2313,39 @@ export default function Admin() {
                 />
               </div>
             </div>
-            <div className="flex items-center gap-4 pt-2">
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label className="text-xs">Planilhas por mês</Label>
+                <Input
+                  type="number"
+                  min={0}
+                  className="mt-1.5"
+                  disabled={createPlanForm.unlimitedSheets}
+                  value={createPlanForm.maxSheetsPerMonth}
+                  onChange={(e) => setCreatePlanForm(f => ({ ...f, maxSheetsPerMonth: Math.max(0, Number(e.target.value)) }))}
+                />
+              </div>
+              <div>
+                <Label className="text-xs">Ordem / hierarquia</Label>
+                <Input
+                  type="number"
+                  min={0}
+                  className="mt-1.5"
+                  value={createPlanForm.displayOrder}
+                  onChange={(e) => setCreatePlanForm(f => ({ ...f, displayOrder: Math.max(0, Number(e.target.value)) }))}
+                />
+              </div>
+            </div>
+            <div>
+              <Label className="text-xs">Benefícios (um por linha)</Label>
+              <Textarea
+                rows={3}
+                className="mt-1.5"
+                value={createPlanForm.features}
+                onChange={(e) => setCreatePlanForm(f => ({ ...f, features: e.target.value }))}
+              />
+            </div>
+            <div className="flex flex-wrap items-center gap-4 pt-2">
               <label className="flex items-center gap-2 text-sm">
                 <input
                   type="checkbox"
@@ -2000,6 +2353,14 @@ export default function Admin() {
                   onChange={(e) => setCreatePlanForm(f => ({ ...f, unlimitedSheets: e.target.checked }))}
                 />
                 Planilhas ilimitadas
+              </label>
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={createPlanForm.isActive}
+                  onChange={(e) => setCreatePlanForm(f => ({ ...f, isActive: e.target.checked }))}
+                />
+                Plano ativo
               </label>
               <label className="flex items-center gap-2 text-sm">
                 <input
@@ -2027,7 +2388,10 @@ export default function Admin() {
               onClick={() => {
                 createPlanMutation.mutate({
                   ...createPlanForm,
-                  features: [],
+                  features: createPlanForm.features
+                    .split("\n")
+                    .map(line => line.trim())
+                    .filter(Boolean),
                 });
               }}
             >

@@ -17,6 +17,8 @@ export const users = pgTable("users", {
   suspended: boolean("suspended").default(false).notNull(),
   sheetsGenerated: integer("sheetsGenerated").default(0).notNull(),
   aiUsesLeft: integer("aiUsesLeft").default(0).notNull(),
+  /** Última vez que a cota mensal de usos de IA foi renovada. */
+  aiUsesResetAt: timestamp("aiUsesResetAt"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().notNull(),
   lastSignedIn: timestamp("lastSignedIn").defaultNow().notNull(),
@@ -169,6 +171,7 @@ export type Category = typeof categories.$inferSelect;
 export type Template = typeof templates.$inferSelect;
 export type GeneratedSheet = typeof generatedSheets.$inferSelect;
 export type Plan = typeof plans.$inferSelect;
+export type InsertPlan = typeof plans.$inferInsert;
 export type SiteSetting = typeof siteSettings.$inferSelect;
 export type PageView = typeof pageViews.$inferSelect;
 export type InsertPageView = typeof pageViews.$inferInsert;

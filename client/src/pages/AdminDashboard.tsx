@@ -9,6 +9,7 @@ import {
   TrendingUp, FileDown, UserCog, Trash2, Plus, Edit, Ban, CheckCircle,
   BarChart3, CreditCard, Eye, EyeOff, Copy, LogOut, Bell, Search,
 } from "lucide-react";
+import PlanVerifiedBadge from "@/components/PlanVerifiedBadge";
 import DashboardLayout from "@/components/DashboardLayout";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -424,7 +425,10 @@ function UsersTab({ searchQuery }: { searchQuery: string }) {
               <div className="flex items-center justify-between">
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 mb-0.5">
-                    <span className="font-medium text-sm truncate">{user.name || "Sem Nome"}</span>
+                    <span className="font-medium text-sm truncate flex items-center gap-1">
+                      {user.name || "Sem Nome"}
+                      <PlanVerifiedBadge plan={user.plan} size={13} />
+                    </span>
                     <Badge variant="outline" className={`text-[10px] h-4 px-1 ${
                       user.plan === 'elite' ? 'border-yellow-500/50 text-yellow-500' :
                       user.plan === 'pro' ? 'border-primary/50 text-primary' :
