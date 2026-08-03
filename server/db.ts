@@ -545,6 +545,47 @@ export async function getPageViewsCount(page?: string, since?: Date): Promise<nu
   return result[0]?.count || 0;
 }
 
+/**
+ * Conta visitantes únicos (por sessionId). É essa a métrica de "quantas pessoas
+ * entraram no site" — o total de pageViews conta cada página aberta.
+ */
+export async function getUniqueVisitorsCount(since?: Date): Promise<number> {
+  const db = await getDb();
+  if (!db) return 0;
+  const result = await db
+    .select({ count: sql<number>`cast(count(distinct ${pageViews.sessionId}) as integer)` })
+    .from(pageViews)
+    .where(since ? gte(pageViews.createdAt, since) : undefined);
+  return result[0]?.count || 0;
+}
+
+/**
+ * Registra um acesso, evitando duplicar a mesma visita: se o mesmo visitante já
+ * abriu a mesma página nos últimos 30 minutos, o acesso não é contado de novo
+ * (protege contra F5 e remontagem de componente inflando a métrica).
+ */
+export async function trackPageViewOnce(data: InsertPageView): Promise<boolean> {
+  const db = await getDb();
+  if (!db) return false;
+  if (data.sessionId) {
+    const cutoff = new Date(Date.now() - 30 * 60 * 1000);
+    const existing = await db
+      .select({ id: pageViews.id })
+      .from(pageViews)
+      .where(
+        and(
+          eq(pageViews.sessionId, data.sessionId),
+          eq(pageViews.page, data.page),
+          gte(pageViews.createdAt, cutoff),
+        ),
+      )
+      .limit(1);
+    if (existing.length > 0) return false;
+  }
+  await db.insert(pageViews).values(data);
+  return true;
+}
+
 export async function getPageViewsByPage(): Promise<{ page: string; count: number }[]> {
   const db = await getDb();
   if (!db) return [];

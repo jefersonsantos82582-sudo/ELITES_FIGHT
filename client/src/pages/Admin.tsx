@@ -784,7 +784,8 @@ export default function Admin() {
                     { label: "Assinaturas ativas", value: activeSubscriptions, icon: CreditCard, tone: "" },
                     { label: "Planilhas geradas", value: statsQuery.data.totalSheets, icon: FileSpreadsheet, tone: "" },
                     { label: "Créditos de IA disponíveis", value: aiCreditsLeft, icon: Sparkles, tone: "", hint: "somados entre todos os usuários" },
-                    { label: "Acessos ao site", value: statsQuery.data.totalPageViews || 0, icon: TrendingUp, tone: "" },
+                    { label: "Visitantes únicos", value: statsQuery.data.uniqueVisitors || 0, icon: Eye, tone: "", hint: "pessoas diferentes que entraram no site" },
+                    { label: "Acessos ao site", value: statsQuery.data.totalPageViews || 0, icon: TrendingUp, tone: "", hint: "total de páginas abertas" },
                     { label: "Vendas concluídas", value: statsQuery.data.completedSales || 0, icon: Trophy, tone: "text-green-600" },
                   ].map((kpi) => {
                     const Icon = kpi.icon;

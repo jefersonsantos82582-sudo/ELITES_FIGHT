@@ -18,8 +18,12 @@ import Loading from "./pages/Loading";
 import { useEffect, useState } from "react";
 import { checkEnvironmentVariables, EnvCheckResult } from "./lib/env-check";
 import { trpc } from "./lib/trpc";
+import { usePageTracking } from "./hooks/usePageTracking";
 
 function Router() {
+  // Conta cada acesso ao site (por visitante e por página).
+  usePageTracking();
+
   return (
     <Switch>
       <Route path="/" component={Home} />

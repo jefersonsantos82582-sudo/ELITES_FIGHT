@@ -24,6 +24,38 @@ export const appRouter = router({
     }),
   }),
 
+  // ==================== Analytics ====================
+  analytics: router({
+    /**
+     * Registra o acesso de um visitante. Antes disso nada chamava trackPageView,
+     * então o contador de acessos do painel ficava sempre em zero.
+     * O sessionId vem do navegador (localStorage) e identifica a pessoa;
+     * o servidor deduplica visitas repetidas da mesma página.
+     */
+    track: publicProcedure
+      .input(z.object({
+        page: z.string().min(1).max(255),
+        sessionId: z.string().min(1).max(100),
+        referer: z.string().max(500).optional(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        try {
+          const counted = await db.trackPageViewOnce({
+            page: input.page,
+            sessionId: input.sessionId,
+            userId: ctx.user?.id ?? null,
+            userAgent: (ctx.req.headers["user-agent"] as string | undefined)?.slice(0, 500) ?? null,
+            referer: input.referer?.slice(0, 500) ?? null,
+          });
+          return { counted };
+        } catch (err) {
+          // Analytics nunca pode derrubar a navegação do usuário.
+          console.error("[analytics] falha ao registrar acesso:", err);
+          return { counted: false };
+        }
+      }),
+  }),
+
   // ==================== Categories ====================
   categories: router({
     list: publicProcedure.query(async () => {

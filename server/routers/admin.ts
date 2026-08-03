@@ -103,6 +103,7 @@ export const adminRouter = router({
     const users = await db.getAllUsers();
     const sheets = await db.getAllGeneratedSheets();
     const totalPageViews = await db.getPageViewsCount();
+    const uniqueVisitors = await db.getUniqueVisitorsCount();
     const approvedPayments = await db.getApprovedPaymentsCount();
 
     const allPlans = await db.getAllPlans();
@@ -125,6 +126,7 @@ export const adminRouter = router({
       planCounts,
       monthlyRevenue,
       totalPageViews,
+      uniqueVisitors,
       completedSales: approvedPayments,
       allPlans,
     };
