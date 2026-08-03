@@ -725,8 +725,8 @@ export default function Admin() {
           {/* ==================== VISÃO GERAL ==================== */}
           <TabsContent value="overview" className="space-y-6">
             {statsQuery.isLoading ? (
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                {[1, 2, 3, 4].map(i => (
+              <div className="grid grid-cols-1 md:grid-cols-6 gap-4">
+                {[1, 2, 3, 4, 5, 6].map(i => (
                   <Card key={i} className="h-32 animate-pulse bg-muted/20" />
                 ))}
               </div>
@@ -735,19 +735,19 @@ export default function Admin() {
                 <div className="grid grid-cols-1 md:grid-cols-6 gap-4">
                   <Card className="p-6">
                     <p className="text-sm text-muted-foreground">Total de Usuários</p>
-                    <p className="text-3xl font-bold">{statsQuery.data.totalUsers}</p>
+                    <p className="text-3xl font-bold">{statsQuery.data.totalUsers || 0}</p>
                   </Card>
                   <Card className="p-6">
                     <p className="text-sm text-muted-foreground">Planilhas Geradas</p>
-                    <p className="text-3xl font-bold">{statsQuery.data.totalSheets}</p>
+                    <p className="text-3xl font-bold">{statsQuery.data.totalSheets || 0}</p>
                   </Card>
                   <Card className="p-6">
                     <p className="text-sm text-muted-foreground">Modelos Ativos</p>
-                    <p className="text-3xl font-bold">{statsQuery.data.totalTemplates}</p>
+                    <p className="text-3xl font-bold">{statsQuery.data.totalTemplates || 0}</p>
                   </Card>
                   <Card className="p-6">
                     <p className="text-sm text-muted-foreground">Receita Estimada</p>
-                    <p className="text-3xl font-bold text-primary">R$ {statsQuery.data.monthlyRevenue.toFixed(2)}</p>
+                    <p className="text-3xl font-bold text-primary">R$ {(Number(statsQuery.data.monthlyRevenue) || 0).toFixed(2)}</p>
                   </Card>
                   <Card className="p-6">
                     <p className="text-sm text-muted-foreground">Acessos ao Site</p>

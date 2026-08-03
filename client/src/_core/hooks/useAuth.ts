@@ -240,15 +240,18 @@ export function useAuth(options?: UseAuthOptions) {
   // loading: Firebase carregando OU sincronizando com servidor
   const loading = fbLoading || (isSyncing && meQuery.isLoading);
   const user = meQuery.data ?? null;
+  const syncFailed = fbUser && !user && !isSyncing && !meQuery.isLoading && meQuery.isError;
 
   return useMemo(() => ({
     user,
     fbUser,
     isSyncing,
+    syncFailed,
     loading,
-    error: sessionError,
+    error: sessionError || (meQuery.error as Error),
     isAuthenticated: Boolean(user),
     login,
     logout,
-  }), [user, fbUser, isSyncing, loading, sessionError, login, logout]);
+    refetchUser: () => meQuery.refetch(),
+  }), [user, fbUser, isSyncing, syncFailed, loading, sessionError, meQuery.error, meQuery.isError, login, logout]);
 }

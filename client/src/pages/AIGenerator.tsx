@@ -98,16 +98,30 @@ export default function AIGenerator() {
     { name: "Cinza Elegante", header: "#4B5563", accent: "#1F2937" },
   ];
 
+  const { syncFailed, refetchUser } = useAuth();
   // Se fbUser existe mas user não chegou, mostrar loading leve
-  if (fbUser && !user && !authLoading && !isSyncing) {
-    return (
-      <DashboardLayout>
-        <div className="flex flex-col items-center justify-center min-h-[60vh] space-y-4">
-          <Loader2 className="h-10 w-10 animate-spin text-primary" />
-          <p className="text-sm text-muted-foreground">Sincronizando seu perfil...</p>
-        </div>
-      </DashboardLayout>
-    );
+  if (fbUser && !user && !authLoading) {
+    if (syncFailed) {
+      return (
+        <DashboardLayout>
+          <div className="flex flex-col items-center justify-center min-h-[60vh] space-y-4">
+            <AlertCircle className="h-10 w-10 text-destructive" />
+            <p className="text-sm text-muted-foreground">Falha ao sincronizar perfil.</p>
+            <Button onClick={() => refetchUser()}>Tentar Novamente</Button>
+          </div>
+        </DashboardLayout>
+      );
+    }
+    if (isSyncing) {
+      return (
+        <DashboardLayout>
+          <div className="flex flex-col items-center justify-center min-h-[60vh] space-y-4">
+            <Loader2 className="h-10 w-10 animate-spin text-primary" />
+            <p className="text-sm text-muted-foreground">Sincronizando seu perfil...</p>
+          </div>
+        </DashboardLayout>
+      );
+    }
   }
 
   // Mostrar mensagem se não estiver autenticado
