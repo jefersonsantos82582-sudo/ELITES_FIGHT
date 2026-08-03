@@ -3,7 +3,6 @@ services:
     name: elites-fight
     runtime: node
     plan: free
-    branch: main
     buildCommand: npm install --legacy-peer-deps && npm run build && npm run db:push
     startCommand: npm start
     envVars:
@@ -30,7 +29,6 @@ services:
     name: subscription-downgrade
     runtime: node
     plan: free
-    branch: main
     schedule: '0 0 0 * * *'
     buildCommand: npm install --legacy-peer-deps && npm run build
     startCommand: npm run cron
