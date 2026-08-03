@@ -100,6 +100,11 @@ export const adminRouter = router({
    * Obter estatísticas gerais
    */
   stats: adminProcedure.query(async () => {
+    // Helper para falhar graciosamente se uma query individual falhar
+    const safe = async <T>(promise: Promise<T>, fallback: T): Promise<T> => {
+      try { return await promise; } catch (e) { console.error(e); return fallback; }
+    };
+
     const [
       totalUsers,
       totalSheets,
@@ -114,18 +119,18 @@ export const adminRouter = router({
       activeSubscriptions,
       growthData
     ] = await Promise.all([
-      db.getUsersCount(),
-      db.getGeneratedSheetsCount(),
-      db.getTemplatesCount(),
-      db.getPageViewsCount(),
-      db.getUniqueVisitorsCount(),
-      db.getApprovedPaymentsCount(),
-      db.getAllPlans(),
-      db.getUserCountsByPlan(),
-      db.getOnlineUsersCount(15),
-      db.getTotalAiCreditsLeft(),
-      db.getActiveSubscriptionsCount(),
-      db.getUserGrowthData(6)
+      safe(db.getUsersCount(), 0),
+      safe(db.getGeneratedSheetsCount(), 0),
+      safe(db.getTemplatesCount(), 0),
+      safe(db.getPageViewsCount(), 0),
+      safe(db.getUniqueVisitorsCount(), 0),
+      safe(db.getApprovedPaymentsCount(), 0),
+      safe(db.getAllPlans(), []),
+      safe(db.getUserCountsByPlan(), []),
+      safe(db.getOnlineUsersCount(15), 0),
+      safe(db.getTotalAiCreditsLeft(), 0),
+      safe(db.getActiveSubscriptionsCount(), 0),
+      safe(db.getUserGrowthData(6), [])
     ]);
 
     const planCounts: Record<string, number> = {};

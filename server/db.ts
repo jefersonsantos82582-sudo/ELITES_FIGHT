@@ -159,48 +159,55 @@ export async function getTotalAiCreditsLeft(): Promise<number> {
 export async function getActiveSubscriptionsCount(): Promise<number> {
   const db = await getDb();
   if (!db) return 0;
-  const now = new Date();
-  
-  // Join users with plans to check if the plan is paid
-  const result = await db
-    .select({ count: sql<number>`cast(count(*) as integer)` })
-    .from(users)
-    .innerJoin(plans, eq(users.plan, plans.code))
-    .where(
-      and(
-        sql`CAST(plans."priceMonthly" AS NUMERIC) > 0`,
-        eq(users.suspended, false),
-        sql`(${users.planExpiresAt} IS NULL OR ${users.planExpiresAt} > ${now})`
-      )
-    );
-  return result[0]?.count || 0;
+  try {
+    const now = new Date();
+    // Versão simplificada para evitar erros de cast ou join complexo
+    const result = await db
+      .select({ count: sql<number>`cast(count(*) as integer)` })
+      .from(users)
+      .where(
+        and(
+          eq(users.suspended, false),
+          sql`${users.plan} != 'free'`,
+          sql`(${users.planExpiresAt} IS NULL OR ${users.planExpiresAt} > ${now})`
+        )
+      );
+    return result[0]?.count || 0;
+  } catch (e) {
+    console.error("Erro ao contar assinaturas ativas:", e);
+    return 0;
+  }
 }
 
 export async function getUserGrowthData(months: number = 6): Promise<{ key: string; label: string; novos: number }[]> {
   const db = await getDb();
   if (!db) return [];
   
-  const result: { key: string; label: string; novos: number }[] = [];
-  const now = new Date();
-  
-  for (let i = months - 1; i >= 0; i--) {
-    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-    const startOfMonth = new Date(d.getFullYear(), d.getMonth(), 1);
-    const endOfMonth = new Date(d.getFullYear(), d.getMonth() + 1, 0, 23, 59, 59, 999);
+  try {
+    const result: { key: string; label: string; novos: number }[] = [];
+    const now = new Date();
     
-    const count = await db
-      .select({ count: sql<number>`cast(count(*) as integer)` })
-      .from(users)
-      .where(and(gte(users.createdAt, startOfMonth), lt(users.createdAt, new Date(endOfMonth.getTime() + 1))));
-    
-    result.push({
-      key: `${d.getFullYear()}-${d.getMonth()}`,
-      label: d.toLocaleDateString("pt-BR", { month: "short" }).replace(".", ""),
-      novos: count[0]?.count || 0,
-    });
+    for (let i = months - 1; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const startOfMonth = new Date(d.getFullYear(), d.getMonth(), 1);
+      const endOfMonth = new Date(d.getFullYear(), d.getMonth() + 1, 0, 23, 59, 59, 999);
+      
+      const countResult = await db
+        .select({ count: sql<number>`cast(count(*) as integer)` })
+        .from(users)
+        .where(and(gte(users.createdAt, startOfMonth), lt(users.createdAt, new Date(endOfMonth.getTime() + 1))));
+      
+      result.push({
+        key: `${d.getFullYear()}-${d.getMonth()}`,
+        label: d.toLocaleDateString("pt-BR", { month: "short" }).replace(".", ""),
+        novos: countResult[0]?.count || 0,
+      });
+    }
+    return result;
+  } catch (e) {
+    console.error("Erro ao obter dados de crescimento:", e);
+    return [];
   }
-  
-  return result;
 }
 
 export async function getUserCountsByPlan(): Promise<{ plan: string; count: number }[]> {
