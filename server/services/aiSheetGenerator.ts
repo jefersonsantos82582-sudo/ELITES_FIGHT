@@ -25,7 +25,9 @@ export interface AIGenerationResponse {
   columns: Array<{
     name: string;
     width?: number;
-    type?: "text" | "number" | "currency" | "date" | "time";
+    type?: "text" | "number" | "currency" | "date" | "time" | "formula";
+    /** Fórmula Excel para colunas calculadas, usando {row} como número da linha. */
+    formula?: string;
   }>;
   sampleRows: string[][];
 }
@@ -225,7 +227,8 @@ const SHEET_RESPONSE_SCHEMA = {
         properties: {
           name: { type: "STRING" },
           width: { type: "NUMBER" },
-          type: { type: "STRING", enum: ["text", "number", "currency", "date", "time"] },
+          type: { type: "STRING", enum: ["text", "number", "currency", "date", "time", "formula"] },
+          formula: { type: "STRING" },
         },
         required: ["name", "type"],
       },
@@ -443,6 +446,44 @@ function closeTruncatedJson(str: string): string {
   return truncated + closing;
 }
 
+/**
+ * Normaliza o que a IA devolveu antes de montar o arquivo:
+ * - descarta colunas sem nome;
+ * - coluna marcada como "formula" sem fórmula volta a ser texto (evita coluna
+ *   morta na planilha);
+ * - remove o "=" inicial da fórmula (o ExcelJS já adiciona);
+ * - ajusta cada linha de exemplo para ter exatamente o número de colunas,
+ *   deixando as posições de fórmula vazias para o Excel calcular.
+ */
+export function sanitizeAIResult(result: AIGenerationResponse): AIGenerationResponse {
+  const columns = (result.columns || [])
+    .filter((col) => col && typeof col.name === "string" && col.name.trim() !== "")
+    .map((col) => {
+      const formula = typeof col.formula === "string" ? col.formula.trim().replace(/^=/, "") : "";
+      if (col.type === "formula" && !formula) {
+        return { ...col, type: "text" as const, formula: undefined };
+      }
+      return formula ? { ...col, formula } : col;
+    });
+
+  const formulaIdx = new Set(
+    columns.map((col, idx) => (col.type === "formula" ? idx : -1)).filter((i) => i !== -1)
+  );
+
+  const sampleRows = (result.sampleRows || [])
+    .filter((row) => Array.isArray(row))
+    .map((row) =>
+      columns.map((_, idx) => {
+        if (formulaIdx.has(idx)) return "";
+        const value = row[idx];
+        return value === undefined || value === null ? "" : String(value);
+      })
+    )
+    .filter((row) => row.some((v) => v !== ""));
+
+  return { columns, sampleRows };
+}
+
 export async function generateSheetWithAI(
   request: AIGenerationRequest
 ): Promise<AIGenerationResponse> {
@@ -473,7 +514,25 @@ export async function generateSheetWithAI(
     ? `\n\nContexto adicional de apresentação:\n- ${styleHints.join("\n- ")}`
     : "";
 
-  const userMessage = `${prompt}${styleBlock}
+  // Fórmulas calculadas: é o que separa uma planilha "lista de dados" de uma
+  // planilha profissional. O gerador (sheetGenerator) já sabe expandir {row},
+  // então basta a IA declarar as colunas do tipo "formula".
+  const formulaBlock = `
+
+COLUNAS CALCULADAS (obrigatório quando fizer sentido):
+Inclua de 1 a 3 colunas do tipo "formula" com cálculos úteis para a categoria, além das colunas de dados.
+Regras da fórmula:
+- Use a sintaxe do Excel SEM o sinal de igual, e use o marcador {row} no lugar do número da linha.
+- Refira-se às colunas pela LETRA correspondente à posição na sua própria lista de colunas (1ª = A, 2ª = B, 3ª = C, ...).
+- Envolva divisões em IFERROR para nunca mostrar erro em linha vazia.
+Exemplos: "D{row}*E{row}" (total = quantidade x preço), "F{row}-E{row}" (lucro), "IFERROR((F{row}-E{row})/E{row},0)" (margem).
+Nas sampleRows, deixe a posição das colunas de fórmula como string vazia "" — o cálculo é feito pelo Excel.`;
+
+  const rowTarget = request.rowCount ?? (plan === "elite" ? 15 : plan === "pro" ? 12 : 8);
+
+  const userMessage = `${prompt}${styleBlock}${formulaBlock}
+
+Título dado pelo cliente para esta planilha: "${request.customName}". Use esse título como contexto: ele indica o uso real pretendido e os nomes das colunas e os dados de exemplo devem combinar com ele.
 
 IMPORTANTE — instrução do cliente tem prioridade sobre a lista de colunas acima:
 A lista de colunas sugerida acima é apenas um PONTO DE PARTIDA. O que o cliente pediu abaixo em "Pedido do cliente" é a fonte da verdade e DEVE ser refletido na estrutura final da planilha:
@@ -485,7 +544,7 @@ A lista de colunas sugerida acima é apenas um PONTO DE PARTIDA. O que o cliente
 
 Pedido do cliente (siga isso rigorosamente): "${request.description}"
 
-Gere ${request.rowCount || 5} linhas de dados de exemplo coerentes com o pedido do cliente.`;
+Gere ${rowTarget} linhas de dados de exemplo realistas, variadas e coerentes com o pedido do cliente — nunca linhas repetidas nem valores placeholder do tipo "xxx".`;
 
   try {
     let content: string;
@@ -536,7 +595,7 @@ Gere ${request.rowCount || 5} linhas de dados de exemplo coerentes com o pedido 
       throw new Error("Estrutura de resposta inválida da IA");
     }
 
-    return result;
+    return sanitizeAIResult(result);
   } catch (error) {
     console.error("[AI Sheet Generator] Erro ao gerar planilha com IA:", error);
     throw new Error(
