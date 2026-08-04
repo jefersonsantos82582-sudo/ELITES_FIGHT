@@ -136,3 +136,56 @@ describe("sheetGenerator", () => {
     expect(dateCell.numFmt).toContain("dd/mm");
   });
 });
+
+describe("sheetGenerator — resumo e exemplos automáticos", () => {
+  const cols: ColumnDef[] = [
+    { name: "Produto", type: "text", width: 30 },
+    { name: "Quantidade", type: "number", width: 14 },
+    { name: "Valor", type: "currency", width: 16 },
+  ];
+
+  it("preenche exemplos quando o modelo não traz amostras", async () => {
+    const buffer = await generateSpreadsheet({
+      templateName: "Estoque",
+      customName: "Sem Amostras",
+      columns: cols,
+    });
+
+    const wb = new ExcelJS.Workbook();
+    await wb.xlsx.load(buffer);
+    const ws = wb.worksheets[0];
+
+    // Linha 3 é a primeira linha de dados e não pode mais vir vazia.
+    expect(ws.getCell(3, 1).value).toBeTruthy();
+    expect(typeof ws.getCell(3, 2).value).toBe("number");
+    expect(typeof ws.getCell(3, 3).value).toBe("number");
+  });
+
+  it("cria a aba Resumo com estatísticas por coluna numérica", async () => {
+    const buffer = await generateSpreadsheet({
+      templateName: "Estoque",
+      customName: "Com Resumo",
+      columns: cols,
+      sampleRows: [["Item A", 2, 10], ["Item B", 4, 20]],
+    });
+
+    const wb = new ExcelJS.Workbook();
+    await wb.xlsx.load(buffer);
+    const resumo = wb.getWorksheet("Resumo");
+
+    expect(resumo).toBeDefined();
+    expect(String(resumo!.getCell(1, 1).value)).toContain("RESUMO");
+
+    // Cabeçalho da tabela de indicadores
+    expect(resumo!.getCell(4, 1).value).toBe("Indicador");
+    expect(resumo!.getCell(4, 2).value).toBe("Total");
+
+    // Primeira coluna numérica ("Quantidade") com fórmulas ligadas à aba de dados
+    expect(resumo!.getCell(5, 1).value).toBe("Quantidade");
+    const total = resumo!.getCell(5, 2).value as any;
+    expect(total?.formula).toContain("SUM");
+    expect(total?.formula).toContain("Com Resumo");
+    const media = resumo!.getCell(5, 3).value as any;
+    expect(media?.formula).toContain("AVERAGE");
+  });
+});

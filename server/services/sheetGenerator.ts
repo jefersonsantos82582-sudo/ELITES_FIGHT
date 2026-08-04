@@ -92,6 +92,257 @@ export function stripDescriptionColumn(
   return { columns: filteredColumns, sampleRows: filteredSampleRows };
 }
 
+/** Converte um índice de coluna (0-based) na letra usada em fórmulas (A, B, ... AA). */
+function columnLetter(index: number): string {
+  let n = index + 1;
+  let letter = "";
+  while (n > 0) {
+    const rest = (n - 1) % 26;
+    letter = String.fromCharCode(65 + rest) + letter;
+    n = Math.floor((n - 1) / 26);
+  }
+  return letter;
+}
+
+const EXAMPLE_TEXT_BY_HINT: { pattern: RegExp; values: string[] }[] = [
+  { pattern: /produto|item|mercadoria|bebida/i, values: ["Produto A", "Produto B", "Produto C", "Produto D", "Produto E", "Produto F", "Produto G", "Produto H"] },
+  { pattern: /cliente|nome|respons[áa]vel|funcion[áa]rio|aluno|paciente/i, values: ["Ana Souza", "Bruno Lima", "Carla Dias", "Diego Alves", "Eduarda Rocha", "Felipe Costa", "Gabriela Mota", "Henrique Sá"] },
+  { pattern: /categoria|tipo|setor|grupo|departamento/i, values: ["Categoria 1", "Categoria 2", "Categoria 1", "Categoria 3", "Categoria 2", "Categoria 1", "Categoria 3", "Categoria 2"] },
+  { pattern: /status|situa[çc][ãa]o/i, values: ["Pago", "Pendente", "Pago", "Atrasado", "Pago", "Pendente", "Pago", "Pago"] },
+  { pattern: /forma de pagamento|pagamento|m[ée]todo/i, values: ["PIX", "Cartão", "Dinheiro", "PIX", "Boleto", "Cartão", "PIX", "Cartão"] },
+  { pattern: /observa[çc][ãa]o|coment[áa]rio|nota/i, values: ["-", "Revisar", "-", "Conferido", "-", "Revisar", "-", "-"] },
+  { pattern: /e-?mail/i, values: ["ana@email.com", "bruno@email.com", "carla@email.com", "diego@email.com", "eduarda@email.com", "felipe@email.com", "gabriela@email.com", "henrique@email.com"] },
+  { pattern: /telefone|celular|whats/i, values: ["(11) 90000-0001", "(11) 90000-0002", "(11) 90000-0003", "(11) 90000-0004", "(11) 90000-0005", "(11) 90000-0006", "(11) 90000-0007", "(11) 90000-0008"] },
+];
+
+const EXAMPLE_ROW_COUNT = 8;
+
+/**
+ * Monta linhas de exemplo plausíveis quando o modelo não traz nenhuma amostra.
+ *
+ * Antes, templates sem `sampleRows` geravam planilhas praticamente vazias — só
+ * cabeçalho e linhas em branco. Agora toda planilha sai com dados de exemplo
+ * coerentes com o tipo e o nome de cada coluna, prontos para o usuário
+ * substituir pelos dados reais.
+ */
+function buildExampleRows(
+  cols: ColumnDef[],
+  types: NonNullable<ColumnDef["type"]>[]
+): unknown[][] {
+  const today = new Date();
+  const rows: unknown[][] = [];
+
+  for (let r = 0; r < EXAMPLE_ROW_COUNT; r++) {
+    const row: unknown[] = cols.map((col, cIdx) => {
+      const type = types[cIdx];
+      const name = col.name || "";
+
+      if (type === "formula") return "";
+      if (type === "date") {
+        const d = new Date(today);
+        d.setDate(today.getDate() - (EXAMPLE_ROW_COUNT - 1 - r) * 3);
+        return d;
+      }
+      if (type === "time") {
+        return `${String(8 + r).padStart(2, "0")}:00`;
+      }
+      if (type === "currency") {
+        return Math.round((150 + r * 87.35) * 100) / 100;
+      }
+      if (type === "number") {
+        if (/percentual|margem|%/i.test(name)) return 10 + r * 2;
+        return 5 + r * 3;
+      }
+
+      const hint = EXAMPLE_TEXT_BY_HINT.find((h) => h.pattern.test(name));
+      if (hint) return hint.values[r % hint.values.length];
+      return `Exemplo ${r + 1}`;
+    });
+    rows.push(row);
+  }
+
+  return rows;
+}
+
+/**
+ * Cria a aba "Resumo": um painel de estatísticas com fórmulas ligadas à aba de
+ * dados (total, média, maior, menor e contagem por coluna numérica) e um
+ * gráfico de barras proporcional feito com REPT, que funciona em qualquer
+ * versão do Excel, Google Sheets e LibreOffice.
+ */
+function addSummarySheet(
+  wb: ExcelJS.Workbook,
+  opts: GenerateOptions,
+  dataSheetName: string,
+  cols: ColumnDef[],
+  types: NonNullable<ColumnDef["type"]>[],
+  dataStartRow: number,
+  dataEndRow: number,
+  headerARGB: string,
+  accentARGB: string
+): void {
+  const numericIdx = cols
+    .map((_, idx) => idx)
+    .filter((idx) => types[idx] === "currency" || types[idx] === "number");
+  const labelIdx = cols.findIndex((_, idx) => types[idx] === "text");
+
+  const ws = wb.addWorksheet("Resumo", {
+    properties: { tabColor: { argb: headerARGB } },
+  });
+  ws.getColumn(1).width = 34;
+  ws.getColumn(2).width = 20;
+  ws.getColumn(3).width = 20;
+  ws.getColumn(4).width = 20;
+  ws.getColumn(5).width = 20;
+  ws.getColumn(6).width = 22;
+
+  // Cabeçalho do painel
+  ws.mergeCells(1, 1, 1, 6);
+  const title = ws.getCell(1, 1);
+  title.value = `${opts.customName.toUpperCase()} — RESUMO`;
+  title.font = { name: "Sora", size: 16, bold: true, color: { argb: "FF111827" } };
+  title.alignment = { vertical: "middle", horizontal: "center" };
+  title.fill = { type: "pattern", pattern: "solid", fgColor: { argb: headerARGB } };
+  ws.getRow(1).height = 34;
+
+  ws.mergeCells(2, 1, 2, 6);
+  const subtitle = ws.getCell(2, 1);
+  subtitle.value = `${opts.templateName} • atualizado automaticamente a partir da aba "${dataSheetName}"`;
+  subtitle.font = { name: "Inter", size: 10, italic: true, color: { argb: "FF666666" } };
+  subtitle.alignment = { horizontal: "center" };
+  ws.getRow(2).height = 20;
+
+  const quoted = `'${dataSheetName.replace(/'/g, "''")}'`;
+  const range = (letter: string) => `${quoted}!${letter}${dataStartRow}:${letter}${dataEndRow}`;
+
+  // Tabela de estatísticas
+  const statHeaderRow = 4;
+  const statHeaders = ["Indicador", "Total", "Média", "Maior", "Menor", "Registros"];
+  statHeaders.forEach((label, idx) => {
+    const cell = ws.getCell(statHeaderRow, idx + 1);
+    cell.value = label;
+    cell.font = { name: "Inter", size: 11, bold: true, color: { argb: "FFFFFFFF" } };
+    cell.alignment = { horizontal: "center", vertical: "middle" };
+    cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: accentARGB } };
+  });
+  ws.getRow(statHeaderRow).height = 24;
+
+  let row = statHeaderRow + 1;
+  if (numericIdx.length === 0) {
+    ws.mergeCells(row, 1, row, 6);
+    const cell = ws.getCell(row, 1);
+    cell.value = "Este modelo não possui colunas numéricas para resumir.";
+    cell.font = { name: "Inter", size: 10, italic: true, color: { argb: "FF666666" } };
+    row += 2;
+  } else {
+    numericIdx.forEach((cIdx, i) => {
+      const letter = columnLetter(cIdx);
+      const isCurrency = types[cIdx] === "currency";
+      const numFmt = isCurrency ? "R$ #,##0.00" : (cols[cIdx].format || "#,##0.00");
+
+      const nameCell = ws.getCell(row, 1);
+      nameCell.value = cols[cIdx].name;
+      nameCell.font = { name: "Inter", size: 10, bold: true, color: { argb: "FF111827" } };
+
+      const formulas = [
+        `SUM(${range(letter)})`,
+        `IFERROR(AVERAGE(${range(letter)}),0)`,
+        `IFERROR(MAX(${range(letter)}),0)`,
+        `IFERROR(MIN(${range(letter)}),0)`,
+        `COUNT(${range(letter)})`,
+      ];
+      formulas.forEach((formula, k) => {
+        const cell = ws.getCell(row, k + 2);
+        cell.value = { formula };
+        cell.numFmt = k === 4 ? "#,##0" : numFmt;
+        cell.font = { name: "Inter", size: 10, color: { argb: "FF111827" } };
+        cell.alignment = { horizontal: "right" };
+      });
+
+      if (i % 2 === 1) {
+        for (let c = 1; c <= 6; c++) {
+          ws.getCell(row, c).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFF8FAFC" } };
+        }
+      }
+      row += 1;
+    });
+    row += 1;
+  }
+
+  // Gráfico de barras proporcional (REPT) sobre a primeira coluna numérica
+  if (numericIdx.length > 0 && labelIdx >= 0) {
+    const valueLetter = columnLetter(numericIdx[0]);
+    const labelLetter = columnLetter(labelIdx);
+    const isCurrency = types[numericIdx[0]] === "currency";
+
+    ws.mergeCells(row, 1, row, 6);
+    const chartTitle = ws.getCell(row, 1);
+    chartTitle.value = `GRÁFICO — ${cols[numericIdx[0]].name} por ${cols[labelIdx].name}`;
+    chartTitle.font = { name: "Sora", size: 12, bold: true, color: { argb: "FF111827" } };
+    chartTitle.fill = { type: "pattern", pattern: "solid", fgColor: { argb: headerARGB } };
+    chartTitle.alignment = { horizontal: "center", vertical: "middle" };
+    ws.getRow(row).height = 24;
+    row += 1;
+
+    const chartStart = row;
+    const maxRows = Math.min(dataEndRow - dataStartRow + 1, 15);
+    for (let i = 0; i < maxRows; i++) {
+      const srcRow = dataStartRow + i;
+      const labelCell = ws.getCell(row, 1);
+      labelCell.value = { formula: `IF(${quoted}!${labelLetter}${srcRow}="","",${quoted}!${labelLetter}${srcRow})` };
+      labelCell.font = { name: "Inter", size: 10, color: { argb: "FF111827" } };
+
+      const valueCell = ws.getCell(row, 2);
+      valueCell.value = { formula: `IF(${quoted}!${valueLetter}${srcRow}="","",${quoted}!${valueLetter}${srcRow})` };
+      valueCell.numFmt = isCurrency ? "R$ #,##0.00" : "#,##0.00";
+      valueCell.font = { name: "Inter", size: 10, color: { argb: "FF111827" } };
+      valueCell.alignment = { horizontal: "right" };
+
+      ws.mergeCells(row, 3, row, 6);
+      const barCell = ws.getCell(row, 3);
+      barCell.value = {
+        formula: `IFERROR(REPT("█",ROUND(IF(MAX(${range(valueLetter)})=0,0,${quoted}!${valueLetter}${srcRow}/MAX(${range(valueLetter)}))*30,0)),"")`,
+      };
+      barCell.font = { name: "Inter", size: 10, color: { argb: headerARGB } };
+      barCell.alignment = { horizontal: "left" };
+      row += 1;
+    }
+
+    // Barras de dados nativas do Excel reforçam a leitura visual.
+    ws.addConditionalFormatting({
+      ref: `B${chartStart}:B${row - 1}`,
+      rules: [
+        {
+          type: "dataBar",
+          priority: 1,
+          minLength: 0,
+          maxLength: 100,
+          color: { argb: headerARGB },
+          gradient: true,
+          showValue: true,
+          border: false,
+          negativeBarColorSameAsPositive: false,
+          negativeBarBorderColorSameAsPositive: false,
+          axisPosition: "auto",
+          direction: "leftToRight",
+          cfvo: [{ type: "min" }, { type: "max" }],
+        } as unknown as Parameters<typeof ws.addConditionalFormatting>[0]["rules"][number],
+      ],
+    });
+    row += 1;
+  }
+
+  // Instruções de uso
+  ws.mergeCells(row, 1, row, 6);
+  const howTo = ws.getCell(row, 1);
+  howTo.value = "Como usar: preencha a aba de dados. Este resumo e todos os totais são recalculados automaticamente.";
+  howTo.font = { name: "Inter", size: 9, italic: true, color: { argb: "FF666666" } };
+  howTo.alignment = { horizontal: "left" };
+
+  ws.pageSetup.orientation = "portrait";
+  ws.pageSetup.fitToPage = true;
+}
+
 /**
  * Generate a professional .xlsx spreadsheet from a template definition.
  * Returns a Buffer ready for storage upload.
@@ -150,9 +401,10 @@ export async function generateSpreadsheet(opts: GenerateOptions): Promise<Buffer
   });
 
   // --- Data rows (starting row 3) ---
-  const sampleRows = opts.sampleRows || [];
+  const providedRows = (opts.sampleRows || []).filter(
+    (row) => Array.isArray(row) && row.some((v) => v !== undefined && v !== null && v !== "")
+  );
   const dataStartRow = 3;
-  const totalDataRows = Math.max(sampleRows.length, 20); // minimum 20 empty rows
 
   // Resolve o tipo efetivo de cada coluna uma única vez (usa o tipo salvo,
   // ou infere pelo nome/amostra). É isso que garante que colunas de valor
@@ -160,8 +412,13 @@ export async function generateSpreadsheet(opts: GenerateOptions): Promise<Buffer
   // na linha de TOTAL, mesmo em templates antigos ou planilhas geradas por IA
   // que não têm o campo `type` preenchido.
   const resolvedTypes = cols.map((col, cIdx) =>
-    resolveColumnType(col, sampleRows.map((row) => row?.[cIdx]))
+    resolveColumnType(col, providedRows.map((row) => row?.[cIdx]))
   );
+
+  // Nenhum modelo sai vazio: sem amostras cadastradas, geramos exemplos
+  // plausíveis por tipo/nome de coluna para o usuário apenas substituir.
+  const sampleRows = providedRows.length > 0 ? providedRows : buildExampleRows(cols, resolvedTypes);
+  const totalDataRows = Math.max(sampleRows.length + 12, 20);
 
   for (let r = 0; r < totalDataRows; r++) {
     const rowIdx = dataStartRow + r;
@@ -299,6 +556,47 @@ export async function generateSpreadsheet(opts: GenerateOptions): Promise<Buffer
     from: { row: 2, column: 1 },
     to: { row: summaryRow - 1, column: cols.length },
   };
+
+  // --- Barras de dados e validação nas colunas numéricas/data ---
+  const lastDataRow = summaryRow - 1;
+  resolvedTypes.forEach((type, cIdx) => {
+    const letter = columnLetter(cIdx);
+    if (type === "currency" || type === "number") {
+      ws.addConditionalFormatting({
+        ref: `${letter}${dataStartRow}:${letter}${lastDataRow}`,
+        rules: [
+          {
+            type: "dataBar",
+            priority: cIdx + 1,
+            minLength: 0,
+            maxLength: 100,
+            color: { argb: headerARGB },
+            gradient: true,
+            showValue: true,
+            border: false,
+            negativeBarColorSameAsPositive: false,
+            negativeBarBorderColorSameAsPositive: false,
+            axisPosition: "auto",
+            direction: "leftToRight",
+            cfvo: [{ type: "min" }, { type: "max" }],
+          } as unknown as Parameters<typeof ws.addConditionalFormatting>[0]["rules"][number],
+        ],
+      });
+    }
+  });
+
+  // --- Aba de resumo com estatísticas e gráfico ---
+  addSummarySheet(
+    wb,
+    opts,
+    sheetName,
+    cols,
+    resolvedTypes,
+    dataStartRow,
+    lastDataRow,
+    headerARGB,
+    accentARGB
+  );
 
   // Print settings
   ws.pageSetup.orientation = "landscape";
