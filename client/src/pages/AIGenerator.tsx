@@ -4,6 +4,7 @@ import {
   Sparkles, Crown, Download, Loader2, Check, AlertCircle, Zap,
 } from "lucide-react";
 import DashboardLayout from "@/components/DashboardLayout";
+import SessionSyncGate from "@/components/SessionSyncGate";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -16,7 +17,7 @@ import { useAuth } from "@/_core/hooks/useAuth";
 import { toast } from "sonner";
 
 export default function AIGenerator() {
-  const { user, loading: authLoading, fbUser, isSyncing, login } = useAuth();
+  const { user, loading: authLoading, fbUser, login } = useAuth();
   const utils = trpc.useUtils();
   const { data: overview } = trpc.dashboard.overview.useQuery(undefined, {
     enabled: !authLoading && Boolean(user),
@@ -107,30 +108,14 @@ export default function AIGenerator() {
     { name: "Cinza Elegante", header: "#4B5563", accent: "#1F2937" },
   ];
 
-  const { syncFailed, refetchUser } = useAuth();
-  // Se fbUser existe mas user não chegou, mostrar loading leve
-  if (fbUser && !user && !authLoading) {
-    if (syncFailed) {
-      return (
-        <DashboardLayout>
-          <div className="flex flex-col items-center justify-center min-h-[60vh] space-y-4">
-            <AlertCircle className="h-10 w-10 text-destructive" />
-            <p className="text-sm text-muted-foreground">Falha ao sincronizar perfil.</p>
-            <Button onClick={() => refetchUser()}>Tentar Novamente</Button>
-          </div>
-        </DashboardLayout>
-      );
-    }
-    if (isSyncing) {
-      return (
-        <DashboardLayout>
-          <div className="flex flex-col items-center justify-center min-h-[60vh] space-y-4">
-            <Loader2 className="h-10 w-10 animate-spin text-primary" />
-            <p className="text-sm text-muted-foreground">Sincronizando seu perfil...</p>
-          </div>
-        </DashboardLayout>
-      );
-    }
+  // Se fbUser existe mas o perfil do servidor não chegou, esperamos — porém com
+  // limite de tempo e botões de ação (antes ficava carregando para sempre).
+  if (fbUser && !user) {
+    return (
+      <DashboardLayout>
+        <SessionSyncGate redirectPath="/dashboard/ia" />
+      </DashboardLayout>
+    );
   }
 
   // Mostrar mensagem se não estiver autenticado

@@ -5,6 +5,7 @@ import {
   Sparkles, FileText, AlertCircle, RefreshCw,
 } from "lucide-react";
 import DashboardLayout from "@/components/DashboardLayout";
+import SessionSyncGate from "@/components/SessionSyncGate";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -16,7 +17,7 @@ import { useAuth } from "@/_core/hooks/useAuth";
 import { toast } from "sonner";
 
 export default function Generator() {
-  const { user, loading: authLoading, fbUser, isSyncing, login } = useAuth();
+  const { user, fbUser, login } = useAuth();
   // Usamos staleTime infinito aqui porque o prefetching já garantiu os dados
   // Isso remove qualquer delay de "loading" ao entrar na página
   const utils = trpc.useUtils();
@@ -137,30 +138,14 @@ export default function Generator() {
     setGenerated(null);
   };
 
-  const { syncFailed, refetchUser } = useAuth();
-  // Se fbUser existe mas user não chegou (isSyncing), mostrar loading leve
-  if (fbUser && !user && !authLoading) {
-    if (syncFailed) {
-      return (
-        <DashboardLayout>
-          <div className="flex flex-col items-center justify-center min-h-[60vh] space-y-4">
-            <AlertCircle className="h-10 w-10 text-destructive" />
-            <p className="text-sm text-muted-foreground">Falha ao sincronizar perfil.</p>
-            <Button onClick={() => refetchUser()}>Tentar Novamente</Button>
-          </div>
-        </DashboardLayout>
-      );
-    }
-    if (isSyncing) {
-      return (
-        <DashboardLayout>
-          <div className="flex flex-col items-center justify-center min-h-[60vh] space-y-4">
-            <Loader2 className="h-10 w-10 animate-spin text-primary" />
-            <p className="text-sm text-muted-foreground">Sincronizando seu perfil...</p>
-          </div>
-        </DashboardLayout>
-      );
-    }
+  // Se fbUser existe mas o perfil do servidor não chegou, esperamos — porém com
+  // limite de tempo e botões de ação (antes ficava carregando para sempre).
+  if (fbUser && !user) {
+    return (
+      <DashboardLayout>
+        <SessionSyncGate redirectPath="/dashboard/gerador" />
+      </DashboardLayout>
+    );
   }
 
   // Mostrar mensagem se não estiver autenticado (sem loading infinito)
